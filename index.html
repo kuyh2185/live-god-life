@@ -443,33 +443,33 @@
   var state = {
     events: [
       { id:'ev1', label:'아침 운동', time:'07:00', days:[1,3,5], duration:30, isFixed:false, isWorkout:true,
-        minVersion:'스트레칭 5분만', checkinOverride:null, memo:null, paused:false },
+        minVersion:'스트레칭 5분만', checkinOverride:null, memo:null, paused:false, reminderMinutes:10 },
       { id:'ev2', label:'영어 스터디', time:'19:00', days:[2,4], duration:60, isFixed:false, isWorkout:false,
-        minVersion:null, checkinOverride:null, memo:'단어 30개 외우기', paused:false },
+        minVersion:null, checkinOverride:null, memo:'단어 30개 외우기', paused:false, reminderMinutes:null },
       { id:'ev3', label:'약 챙겨 먹기', time:'08:30', days:[0,1,2,3,4,5,6], duration:5, isFixed:true, isWorkout:false,
-        minVersion:null, checkinOverride:'immediately', memo:null, paused:false }
+        minVersion:null, checkinOverride:'immediately', memo:null, paused:false, reminderMinutes:5 }
     ],
     // 예시 일정을 일부러 빡빡하게 채워서(9개), 비서의 "간소화" 기능이 실제로 어느 정도까지
     // 줄여주는지 체감할 수 있게 했어요. 헬스장 PT(14:00~14:30)가 전공 과제(13:00~14:30)와
     // 겹치도록 일부러 넣어서, "겹친 일정 조정하기" 기능도 바로 테스트해볼 수 있어요.
     adhocEntries: [
       { id:'ad4', label:'아침 스터디', dateKey:TK, time:'09:00', duration:60, isFixed:false,
-        minVersion:'요약만 훑어보기', memo:'전공 개론' },
+        minVersion:'요약만 훑어보기', memo:'전공 개론', reminderMinutes:null },
       { id:'ad5', label:'팀플 회의', dateKey:TK, time:'10:00', duration:90, isFixed:false,
-        minVersion:'화상으로 15분만 체크', memo:null },
-      { id:'ad6', label:'점심 약속', dateKey:TK, time:'11:30', duration:60, isFixed:true, minVersion:null, memo:'동기랑' },
+        minVersion:'화상으로 15분만 체크', memo:null, reminderMinutes:10 },
+      { id:'ad6', label:'점심 약속', dateKey:TK, time:'11:30', duration:60, isFixed:true, minVersion:null, memo:'동기랑', reminderMinutes:null },
       { id:'ad7', label:'전공 과제', dateKey:TK, time:'13:00', duration:90, isFixed:false,
-        minVersion:'개요만 정리하기', memo:null },
+        minVersion:'개요만 정리하기', memo:null, reminderMinutes:null },
       { id:'ad8', label:'헬스장 PT', dateKey:TK, time:'14:00', duration:30, isFixed:false,
-        minVersion:'가볍게 스트레칭만', memo:null },
-      { id:'ad1', label:'치과 예약', dateKey:TK, time:'15:00', duration:30, isFixed:true, minVersion:null, memo:null },
+        minVersion:'가볍게 스트레칭만', memo:null, reminderMinutes:null },
+      { id:'ad1', label:'치과 예약', dateKey:TK, time:'15:00', duration:30, isFixed:true, minVersion:null, memo:null, reminderMinutes:30 },
       { id:'ad9', label:'아르바이트 면접 준비', dateKey:TK, time:'16:00', duration:60, isFixed:false,
-        minVersion:'핵심 답변만 리허설', memo:null },
-      { id:'ad10', label:'동아리 정기모임', dateKey:TK, time:'17:30', duration:60, isFixed:false, minVersion:null, memo:null },
-      { id:'ad11', label:'저녁 약속', dateKey:TK, time:'19:00', duration:60, isFixed:true, minVersion:null, memo:'가족' },
+        minVersion:'핵심 답변만 리허설', memo:null, reminderMinutes:null },
+      { id:'ad10', label:'동아리 정기모임', dateKey:TK, time:'17:30', duration:60, isFixed:false, minVersion:null, memo:null, reminderMinutes:null },
+      { id:'ad11', label:'저녁 약속', dateKey:TK, time:'19:00', duration:60, isFixed:true, minVersion:null, memo:'가족', reminderMinutes:null },
       { id:'ad2', label:'발표 자료 정리', dateKey:TK, time:'20:30', duration:45, isFixed:false,
-        minVersion:'핵심 슬라이드 3장만 체크', memo:'금요일 발표용' },
-      { id:'ad3', label:'동아리 회의', dateKey:TK1, time:'18:00', duration:60, isFixed:false, minVersion:null, memo:null }
+        minVersion:'핵심 슬라이드 3장만 체크', memo:'금요일 발표용', reminderMinutes:null },
+      { id:'ad3', label:'동아리 회의', dateKey:TK1, time:'18:00', duration:60, isFixed:false, minVersion:null, memo:null, reminderMinutes:null }
     ],
     scheduleEntries: [
       { id:'ev1-'+TKm1, refId:'ev1', kind:'session', dateKey:TKm1, status:'done_full', reason:null },
@@ -488,7 +488,11 @@
     settings: {
       interventionLevel:'moderate', // 'quiet' | 'moderate' | 'active'
       checkinTiming:'after_end',
-      voice:{ ttsEnabled:true, autoSpeak:false, rate:1 },
+      // headphonesConnected: 실제 기기라면 오디오 라우트를 자동 감지하겠지만, 브라우저
+      // 프로토타입에서는 감지할 방법이 없어서 시뮬레이션 토글로 대신해요. 이 값이 꺼져 있으면
+      // 일정 알림은 소리(띠링)만 내고, 켜져 있을 때만 내용을 음성으로 읽어줘요 — 이어폰 없이
+      // 밖에서 일정이 갑자기 소리로 흘러나오는 걸 막기 위해서예요.
+      voice:{ ttsEnabled:true, autoSpeak:false, rate:1, headphonesConnected:false },
       primaryGoal:null,
       // 장기 목표를 매번 잘게 쪼개진 않지만, 최소한 "나의 목표"를 한 줄로 적어두면
       // 오늘 무엇을 지킬지 판단 기준이 생겨요(목표 계층의 가장 가벼운 버전). 오늘 탭의
@@ -570,7 +574,7 @@
       rows.push({ entryId:entryId, refId:ev.id, kind:'session', label:label, time:time, duration:duration,
         isFixed:ev.isFixed, minVersion:ev.minVersion, memo:ev.memo, isWorkout:!!ev.isWorkout,
         status: record ? record.status : 'upcoming',
-        isMiniVersion: !!(ov && ov.isMiniVersion) });
+        isMiniVersion: !!(ov && ov.isMiniVersion), reminderMinutes:ev.reminderMinutes||null });
     });
     state.adhocEntries.forEach(function(en){
       if(en.dateKey !== dateKey) return;
@@ -578,7 +582,7 @@
       var record = findScheduleEntry(entryId);
       rows.push({ entryId:entryId, refId:en.id, kind:'adhoc', label:en.label, time:en.time, duration:en.duration,
         isFixed:en.isFixed, minVersion:en.minVersion||null, memo:en.memo, isWorkout:false,
-        status: record ? record.status : 'upcoming', isMiniVersion:!!en.isMiniVersion });
+        status: record ? record.status : 'upcoming', isMiniVersion:!!en.isMiniVersion, reminderMinutes:en.reminderMinutes||null });
     });
     rows.sort(function(a,b){ return a.time < b.time ? -1 : a.time > b.time ? 1 : 0; });
     return rows;
@@ -914,7 +918,13 @@
 
     if(ui.notif){
       html += '<div class="notif" onclick="appAction(\'openNotif\')"><div class="ic">'+ui.notif.title.split(' ')[0]+'</div>' +
-        '<div><div class="tt">알림</div><div class="bb">'+ui.notif.body+'</div></div></div>';
+        '<div style="flex:1;"><div class="tt">알림</div><div class="bb">'+esc(ui.notif.body)+'</div></div>';
+      // 일정 알림은 이어폰이 연결돼 있을 때만 자동으로 읽어줘요. 그 외엔 방금 띠링 소리만 났을
+      // 테니, 내용을 직접 듣고 싶으면 이 버튼으로 켤 수 있게 해요(항상 눈으로 볼 수도 있고요).
+      if(ui.notif.kind==='reminder'){
+        html += '<button class="share-eye-btn" style="flex-shrink:0;" onclick="event.stopPropagation(); appAction(\'speakNotif\')">🔊 듣기</button>';
+      }
+      html += '</div>';
     }
 
     html += '<div class="content">';
@@ -1823,6 +1833,23 @@
     return html;
   }
 
+  // ── 시작 전 알림 (몇 분 전에 알려줄지) ──
+  // 반복 일정은 이 값을 한 번 정해두면 매 회차마다 계속 쓰이고(일정 자체에 저장),
+  // 하루짜리 일정은 추가할 때(빠른 추가·새 일정 폼) 그때그때 골라요.
+  var REMINDER_PRESETS = [0,5,10,30,60];
+  function reminderLabel(m){
+    if(!m) return '알림 없음';
+    return m>=60 ? (Math.round(m/60)+'시간 전') : (m+'분 전');
+  }
+  function reminderPicker(value, actionName){
+    var html = '<div class="preset-row">';
+    REMINDER_PRESETS.forEach(function(m){
+      html += chip(reminderLabel(m), (value||0)===m, "appAction('"+actionName+"',"+m+")", true);
+    });
+    html += '</div>';
+    return html;
+  }
+
   // ── 겹친 일정 해결 시트 (v40: 컨디션 조정과 완전히 분리) ──
   // 겹침 해결과 "오늘 피곤해요" 조정은 발생 원인도, 해야 할 행동도 달라서 하나의 화면에
   // 묶여 있으면 뭘 고치는 화면인지 헷갈린다는 피드백으로 화면을 둘로 나눴어요.
@@ -2124,6 +2151,7 @@
     body += '</div>';
     body += renderTimeWheel(q.time, 'quickAdd');
     body += '<div class="field-label">소요 시간</div>'+durationPicker(q.duration, 'quickAddDuration');
+    body += '<div class="field-label">시작 전 알림</div>'+reminderPicker(q.reminderMinutes, 'quickAddReminderPreset');
     body += '<div style="margin-top:16px;">'+btn('추가', 'primary', "appAction('quickAddSave')")+btn('취소', 'ghost', "appAction('quickAddClose')")+'</div>';
     return '<div class="overlay" onclick="appAction(\'quickAddClose\')"><div class="sheet" onclick="event.stopPropagation()">' +
       '<div class="sheet-title">빠른 일정 추가 ('+esc(formatKoreanDate(q.dateKey))+')</div>'+body+'</div></div>';
@@ -2138,7 +2166,7 @@
         var hm = parseHM(ev.time);
         html += '<div class="item-card'+(ev.paused?' paused':'')+'" onclick="appAction(\'openForm\',\'session\',\''+ev.id+'\')"><div style="flex:1;">' +
           '<div class="lbl">'+esc(ev.label)+(ev.isFixed?' 📌':'')+(ev.paused?' <span style="font-size:10px;color:var(--text-faint);">(쉬는 중)</span>':'')+'</div>' +
-          '<div class="meta">'+ev.days.map(function(d){return WEEKDAY_LABELS[d];}).join('·')+' '+meridiemTimeLabel(hm.hour,hm.minute)+' · '+formatDurationHM(ev.duration)+'</div></div>' +
+          '<div class="meta">'+ev.days.map(function(d){return WEEKDAY_LABELS[d];}).join('·')+' '+meridiemTimeLabel(hm.hour,hm.minute)+' · '+formatDurationHM(ev.duration)+(ev.reminderMinutes?' · 🔔 '+reminderLabel(ev.reminderMinutes):'')+'</div></div>' +
           '<div onclick="event.stopPropagation();" style="display:flex; flex-direction:column; align-items:center; gap:3px; flex-shrink:0;">' +
           toggleTrack(ev.paused, "appAction('toggleEventPaused','"+ev.id+"')") +
           '<span style="font-size:9.5px; color:var(--text-faint);">잠시 쉬기</span></div></div>';
@@ -2150,7 +2178,7 @@
         var hm = parseHM(en.time);
         html += '<div class="item-card" onclick="appAction(\'openForm\',\'adhoc\',\''+en.id+'\')"><div style="flex:1;">' +
           '<div class="lbl">'+esc(en.label)+(en.isFixed?' 📌':'')+'</div>' +
-          '<div class="meta">'+en.dateKey+' '+meridiemTimeLabel(hm.hour,hm.minute)+' · '+formatDurationHM(en.duration)+'</div></div></div>';
+          '<div class="meta">'+en.dateKey+' '+meridiemTimeLabel(hm.hour,hm.minute)+' · '+formatDurationHM(en.duration)+(en.reminderMinutes?' · 🔔 '+reminderLabel(en.reminderMinutes):'')+'</div></div></div>';
       });
     }
     html += '<button class="btn btn-secondary" style="margin-top:12px;" onclick="appAction(\'openForm\',\''+(ui.scheduleTab==='recurring'?'session':'adhoc')+'\',null)">+ 새 일정</button>';
@@ -2183,6 +2211,7 @@
       body += '</div>';
       body += '<div class="field-label">힘든 날에는 (선택)</div><input class="textfield" value="'+esc(d.minVersion)+'" placeholder="예: 스트레칭 5분만" oninput="appAction(\'formField\',\'minVersion\',this.value)"/>';
       body += '<div class="field-label">메모 (선택)</div><input class="textfield" value="'+esc(d.memo)+'" placeholder="" oninput="appAction(\'formField\',\'memo\',this.value)"/>';
+      body += '<div class="field-label">시작 전 알림'+(f.kind==='session'?' (매 회차 공통)':'')+'</div>'+reminderPicker(d.reminderMinutes, 'formReminderPreset');
     }
 
     body += '<div style="margin-top:16px;">'+btn('저장', 'primary', "appAction('formSave')");
@@ -2472,6 +2501,9 @@
       toggleTrack(state.settings.voice.ttsEnabled, "appAction('toggleVoice','ttsEnabled')")+'</div>';
     html += '<div class="settings-row"><div><div class="t">브리핑 자동으로 읽어주기</div><div class="d">오늘 화면에 들어오면 브리핑을 한 번 읽어줘요.</div></div>' +
       toggleTrack(state.settings.voice.autoSpeak, "appAction('toggleVoice','autoSpeak')")+'</div>';
+    html += '<div class="settings-row"><div><div class="t">이어폰 연결 시뮬레이션</div>' +
+      '<div class="d">일정 알림은 이게 켜져 있을 때만 내용을 음성으로 읽어줘요. 꺼져 있으면 띠링 소리만 나고, 알림의 "듣기" 버튼이나 배너를 직접 봐야 내용을 알 수 있어요. 실제 앱에서는 이어폰 연결을 자동으로 감지해요 — 여기선 프로토타입이라 직접 켜고 꺼서 시험해볼 수 있게 했어요.</div></div>' +
+      toggleTrack(state.settings.voice.headphonesConnected, "appAction('toggleVoice','headphonesConnected')")+'</div>';
 
     html += '<div class="section-title">아침 · 취침 루틴</div>';
     var wt = parseHM(state.settings.routine.wakeTime);
@@ -2663,17 +2695,19 @@
         ui.insightDismissedIds[args[0]] = true; break;
       }
 
-      case 'openQuickAdd': ui.quickAdd = {label:'', time:'09:00', duration:30, dateKey:curDateKey()}; break;
+      case 'openQuickAdd': ui.quickAdd = {label:'', time:'09:00', duration:30, dateKey:curDateKey(), reminderMinutes:10}; break;
       case 'quickAddClose': ui.quickAdd = null; break;
       case 'quickAddLabel': ui.quickAdd.label = args[0]; return;
       case 'quickAddDateQuick': ui.quickAdd.dateKey = addDaysKey(todayKey(), args[0]); break;
       case 'quickAddDurationPreset': ui.quickAdd.duration = args[0]; break;
       case 'quickAddDurationCustom': break;
       case 'quickAddDurationStep': ui.quickAdd.duration = Math.max(5, ui.quickAdd.duration+args[0]); break;
+      case 'quickAddReminderPreset': ui.quickAdd.reminderMinutes = args[0]; break;
       case 'quickAddSave': {
         if(!ui.quickAdd.label.trim()) return;
         addAdhocEntry({label:ui.quickAdd.label.trim(), dateKey:ui.quickAdd.dateKey, time:ui.quickAdd.time,
-          duration:ui.quickAdd.duration, isFixed:false, isTimeFixed:false, minVersion:null, memo:null});
+          duration:ui.quickAdd.duration, isFixed:false, isTimeFixed:false, minVersion:null, memo:null,
+          reminderMinutes: ui.quickAdd.reminderMinutes||null});
         ui.quickAdd = null; break;
       }
 
@@ -2701,6 +2735,7 @@
       case 'formDurationPreset': ui.form.draft.duration = args[0]; break;
       case 'formDurationCustom': break;
       case 'formDurationStep': ui.form.draft.duration = Math.max(5, ui.form.draft.duration+args[0]); break;
+      case 'formReminderPreset': ui.form.draft.reminderMinutes = args[0]; break;
       case 'formDateStep': ui.form.draft.dateKey = addDaysKey(ui.form.draft.dateKey, args[0]); break;
       case 'formDateQuick': ui.form.draft.dateKey = addDaysKey(todayKey(), args[0]); break;
       case 'formSave': {
@@ -2709,11 +2744,13 @@
         if(fm.kind==='session' && d.days.length===0){ alert('요일을 하나 이상 선택해주세요'); return; }
         if(fm.kind==='session'){
           var payload = {label:d.label.trim(), time:d.time, days:d.days, duration:d.duration, isFixed:d.isFixed,
-            isTimeFixed:d.isTimeFixed, isWorkout:d.isWorkout, minVersion:d.minVersion.trim()||null, memo:d.memo.trim()||null};
+            isTimeFixed:d.isTimeFixed, isWorkout:d.isWorkout, minVersion:d.minVersion.trim()||null, memo:d.memo.trim()||null,
+            reminderMinutes:d.reminderMinutes||null};
           if(fm.editingId) updateRecurringEvent(fm.editingId, payload); else addRecurringEvent(payload);
         } else {
           var payload2 = {label:d.label.trim(), dateKey:d.dateKey, time:d.time, duration:d.duration, isFixed:d.isFixed,
-            isTimeFixed:d.isTimeFixed, minVersion:d.minVersion.trim()||null, memo:d.memo.trim()||null};
+            isTimeFixed:d.isTimeFixed, minVersion:d.minVersion.trim()||null, memo:d.memo.trim()||null,
+            reminderMinutes:d.reminderMinutes||null};
           if(fm.editingId) updateAdhocEntry(fm.editingId, payload2); else addAdhocEntry(payload2);
         }
         ui.form = null; break;
@@ -2729,6 +2766,7 @@
         ui.form = null; ui.confirm = null; break;
       }
 
+      case 'speakNotif': if(ui.notif) speakText(ui.notif.body); return;
       case 'openNotif': {
         var wasWakeNotif = ui.notif && ui.notif.kind==='wake';
         ui.tab = 'today';
@@ -2888,13 +2926,15 @@
     if(kind==='session'){
       var ev = id ? state.events.find(function(e){return e.id===id;}) : null;
       draft = ev ? {label:ev.label, time:ev.time, days:ev.days.slice(), dateKey:todayKey(), duration:ev.duration,
-        isFixed:ev.isFixed, isTimeFixed:!!ev.isTimeFixed, isWorkout:ev.isWorkout, minVersion:ev.minVersion||'', memo:ev.memo||''} :
-        {label:'', time:'09:00', days:[], dateKey:todayKey(), duration:30, isFixed:false, isTimeFixed:false, isWorkout:false, minVersion:'', memo:''};
+        isFixed:ev.isFixed, isTimeFixed:!!ev.isTimeFixed, isWorkout:ev.isWorkout, minVersion:ev.minVersion||'', memo:ev.memo||'',
+        reminderMinutes:ev.reminderMinutes||0} :
+        {label:'', time:'09:00', days:[], dateKey:todayKey(), duration:30, isFixed:false, isTimeFixed:false, isWorkout:false, minVersion:'', memo:'', reminderMinutes:10};
     } else {
       var en = id ? state.adhocEntries.find(function(e){return e.id===id;}) : null;
       draft = en ? {label:en.label, time:en.time, days:[], dateKey:en.dateKey, duration:en.duration,
-        isFixed:en.isFixed, isTimeFixed:!!en.isTimeFixed, isWorkout:false, minVersion:en.minVersion||'', memo:en.memo||''} :
-        {label:'', time:'09:00', days:[], dateKey:curDateKey(), duration:30, isFixed:false, isTimeFixed:false, isWorkout:false, minVersion:'', memo:''};
+        isFixed:en.isFixed, isTimeFixed:!!en.isTimeFixed, isWorkout:false, minVersion:en.minVersion||'', memo:en.memo||'',
+        reminderMinutes:en.reminderMinutes||0} :
+        {label:'', time:'09:00', days:[], dateKey:curDateKey(), duration:30, isFixed:false, isTimeFixed:false, isWorkout:false, minVersion:'', memo:'', reminderMinutes:10};
     }
     ui.form = { kind:kind, editingId:id||null, draft: draft, initial: Object.assign({}, draft), advancedOpen:false };
   }
@@ -2915,21 +2955,76 @@
     }
   }
 
-  function speakBriefingDemo(){
+  function speakText(text){
     try{
       if(!('speechSynthesis' in window)) return;
-      var b = computeBriefing(curDateKey(), new Date());
-      var u = new SpeechSynthesisUtterance(b.headline);
+      var u = new SpeechSynthesisUtterance(text);
       u.lang = 'ko-KR';
       window.speechSynthesis.cancel();
       window.speechSynthesis.speak(u);
     }catch(e){}
   }
+  function speakBriefingDemo(){
+    speakText(computeBriefing(curDateKey(), new Date()).headline);
+  }
 
-  // 1분마다 시계 갱신 — 열려있는 시트가 없을 때만 다시 그려서, 조작 중인 모달이 리셋되지 않게 해요.
+  // 짧은 "띠링" 알림음 — 외부 오디오 파일 없이 Web Audio API로 두 음을 순서대로 울려요.
+  function playChime(){
+    try{
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if(!Ctx) return;
+      var ctx = new Ctx();
+      [880, 1320].forEach(function(freq, i){
+        var t0 = ctx.currentTime + i*0.14;
+        var osc = ctx.createOscillator(), gain = ctx.createGain();
+        osc.type = 'sine'; osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.16, t0+0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, t0+0.3);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(t0); osc.stop(t0+0.32);
+      });
+    }catch(e){}
+  }
+
+  // ── 일정 시작 전 알림 ──
+  // entryId별로 이번 세션에서 이미 울렸는지 기억해요(같은 일정이 매 60초 체크마다
+  // 다시 울리지 않도록). 새로고침하면 초기화되는데, 데모 프로토타입이라 괜찮아요 —
+  // 실제 앱이라면 이 부분이 기기의 로컬/푸시 알림 스케줄러가 될 자리예요.
+  var firedReminderIds = {};
+  function checkReminders(){
+    var dateKey = todayKey(), now = new Date();
+    var nowMinutes = now.getHours()*60+now.getMinutes();
+    buildTimetableForDate(dateKey).forEach(function(row){
+      if(!row.reminderMinutes || FINISHED.indexOf(row.status)!==-1) return;
+      var hm = parseHM(row.time), start = hm.hour*60+hm.minute;
+      var fireAt = start - row.reminderMinutes;
+      // 정확히 그 분에 타이머가 맞지 않을 수 있어서(60초 간격 드리프트), fireAt과 시작 시간
+      // 사이 구간이면 아직 안 울린 것만 골라 한 번 울려요.
+      if(nowMinutes >= fireAt && nowMinutes < start && !firedReminderIds[row.entryId]){
+        firedReminderIds[row.entryId] = true;
+        fireReminder(row);
+      }
+    });
+  }
+  function fireReminder(row){
+    var body = row.reminderMinutes+'분 후 "'+row.label+'"이(가) 시작해요.';
+    ui.notif = { title:'⏰ 일정 알림', body: body, kind:'reminder', entryId: row.entryId, dateKey: todayKey() };
+    playChime();
+    // 갑자기 밖에서 일정 내용이 소리로 흘러나오는 걸 막기 위해, 이어폰이 연결돼 있을 때만
+    // 내용을 음성으로 읽어줘요. 아니면 방금 울린 띠링 소리뿐이고, 내용은 알림 배너를 보거나
+    // "듣기" 버튼을 직접 눌러야 들을 수 있어요.
+    if(state.settings.voice.ttsEnabled && state.settings.voice.headphonesConnected) speakText(body);
+    render();
+  }
+
+  // 1분마다 시계 갱신 + 알림 체크 — 열려있는 시트가 없을 때만 화면을 다시 그려서, 조작 중인
+  // 모달이 리셋되지 않게 해요. 알림 체크는 모달이 열려 있어도 계속 돌아가요.
   setInterval(function(){
+    checkReminders();
     if(!ui.sheet && !ui.overlap && !ui.energy && !ui.checkin && !ui.quickAdd && !ui.form) render();
   }, 60000);
+  checkReminders();
 
   render();
 })();
