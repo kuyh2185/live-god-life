@@ -809,37 +809,97 @@
     toastTimer = setTimeout(function(){ ui.toast = null; render(); }, 3000);
   }
 
+  // ───────────────────────── 네이티브 알림 배선 (Capacitor 준비) ─────────────────────────
+  // 지금은 브라우저 프로토타입이라 이 함수들은 전부 조용히 아무 일도 안 해요(nativeNotifPlugin()이
+  // 항상 null). 나중에 이 코드를 Capacitor로 감싸고 @capacitor/local-notifications를 설치하면,
+  // 코드를 더 고칠 필요 없이 이 배선 그대로 실제 OS 알림(앱이 꺼져 있어도 옴)으로 작동해요.
+  // 설정·설치 체크리스트는 NOTIFICATIONS.md 참고.
+  function isNativeApp(){
+    try{ return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); }
+    catch(e){ return false; }
+  }
+  function nativeNotifPlugin(){
+    try{ return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications) || null; }
+    catch(e){ return null; }
+  }
+  // Local Notifications는 정수 id가 필요해서, entryId 문자열을 32비트 정수로 해시해요.
+  function reminderNotifId(entryId){
+    var s = String(entryId||''), h = 0;
+    for(var i=0;i<s.length;i++) h = (h*31 + s.charCodeAt(i)) | 0;
+    return Math.abs(h) || 1;
+  }
+  // 오늘 시간표의 한 항목을 실제 OS 알림으로 예약해요(이미 있던 예약은 먼저 취소하고 다시
+  // 잡아서, 시간을 바꾸거나 알림을 껐을 때도 항상 최신 상태로 유지돼요).
+  function syncNativeReminder(row, dateKey){
+    var plugin = nativeNotifPlugin();
+    if(!plugin) return;
+    var id = reminderNotifId(row.entryId);
+    plugin.cancel({ notifications:[{id:id}] }).catch(function(){});
+    if(!row.reminderMinutes || FINISHED.indexOf(row.status)!==-1) return;
+    var hm = parseHM(row.time);
+    var fireDate = new Date(dateKey+'T00:00:00');
+    fireDate.setMinutes(hm.hour*60 + hm.minute - row.reminderMinutes);
+    if(fireDate.getTime() <= Date.now()) return; // 이미 지난 시각이면 예약하지 않아요
+    plugin.schedule({ notifications:[{
+      id: id,
+      title: '⏰ 일정 알림',
+      body: row.reminderMinutes+'분 후 "'+row.label+'"이(가) 시작해요.',
+      schedule: { at: fireDate },
+      channelId: 'godsaeng-reminders'
+    }]}).catch(function(){});
+  }
+  function cancelNativeReminder(entryId){
+    var plugin = nativeNotifPlugin();
+    if(!plugin) return;
+    plugin.cancel({ notifications:[{id: reminderNotifId(entryId)}] }).catch(function(){});
+  }
+  // 오늘 시간표 전체를 다시 훑어서 알림을 재동기화해요 — 일정을 추가/수정/삭제하거나 반복
+  // 일정을 쉬기 켤 때마다 호출해요. TODO(실제 앱): 반복 일정은 오늘 것만이 아니라 앞으로 며칠치를
+  // 미리 예약해둬야 앱을 매일 열지 않아도 알림이 와요 — 이 프로토타입은 "오늘"만 계산할 수 있으니,
+  // 앱을 열 때마다(그리고 매일 자정 등 주기적으로) 다음 N일치를 다시 예약하는 로직을 추가해야 해요.
+  function syncAllNativeRemindersForToday(){
+    if(!isNativeApp()) return;
+    var dateKey = todayKey();
+    buildTimetableForDate(dateKey).forEach(function(row){ syncNativeReminder(row, dateKey); });
+  }
+
   function addRecurringEvent(input){
     var id = uid('ev');
     state.events.push(Object.assign({id:id}, input));
     pushUndo('"'+input.label+'" 반복 일정 추가', function(){ state.events = state.events.filter(function(e){return e.id!==id;}); });
+    syncAllNativeRemindersForToday();
   }
   function updateRecurringEvent(id, patch){
     var idx = state.events.findIndex(function(e){return e.id===id;}); if(idx===-1) return;
     var prev = state.events[idx];
     state.events[idx] = Object.assign({}, prev, patch);
     pushUndo('"'+prev.label+'" 반복 일정 수정', function(){ state.events[idx] = prev; });
+    syncAllNativeRemindersForToday();
   }
   function deleteRecurringEvent(id){
     var idx = state.events.findIndex(function(e){return e.id===id;}); if(idx===-1) return;
     var removed = state.events[idx]; state.events.splice(idx,1);
     pushUndo('"'+removed.label+'" 반복 일정 삭제', function(){ state.events.push(removed); });
+    cancelNativeReminder(id+'-'+todayKey());
   }
   function addAdhocEntry(input){
     var id = uid('ad');
     state.adhocEntries.push(Object.assign({id:id}, input));
     pushUndo('"'+input.label+'" 일정 추가', function(){ state.adhocEntries = state.adhocEntries.filter(function(e){return e.id!==id;}); });
+    syncAllNativeRemindersForToday();
   }
   function updateAdhocEntry(id, patch){
     var idx = state.adhocEntries.findIndex(function(e){return e.id===id;}); if(idx===-1) return;
     var prev = state.adhocEntries[idx];
     state.adhocEntries[idx] = Object.assign({}, prev, patch);
     pushUndo('"'+prev.label+'" 일정 수정', function(){ state.adhocEntries[idx] = prev; });
+    syncAllNativeRemindersForToday();
   }
   function deleteAdhocEntry(id){
     var idx = state.adhocEntries.findIndex(function(e){return e.id===id;}); if(idx===-1) return;
     var removed = state.adhocEntries[idx]; state.adhocEntries.splice(idx,1);
     pushUndo('"'+removed.label+'" 일정 삭제', function(){ state.adhocEntries.push(removed); });
+    cancelNativeReminder(id+'-'+removed.dateKey);
   }
   // 반복 일정을 계속 켜고 끌 수 있는 "잠시 쉬기" — 켜져 있는 동안은 오늘/내일 시간표, 브리핑,
   // 피곤 제안 어디에도 안 나타나고, 끄면 다시 원래대로 나타나요(특정 주만 쉬는 게 아니라 계속 유지돼요).
@@ -847,6 +907,7 @@
     var ev = state.events.find(function(e){ return e.id===eventId; });
     if(!ev) return;
     ev.paused = !ev.paused;
+    if(ev.paused) cancelNativeReminder(eventId+'-'+todayKey()); else syncAllNativeRemindersForToday();
     render();
   }
   function setEventOccurrenceOverride(eventId, dateKey, override){
@@ -856,6 +917,7 @@
     pushUndo('오늘 일정 조정', function(){
       if(previous) state.eventOccurrenceOverrides[key] = previous; else delete state.eventOccurrenceOverrides[key];
     });
+    syncAllNativeRemindersForToday();
   }
   function setEntryStatus(kind, refId, dateKey, status, opts){
     var id = refId+'-'+dateKey;
@@ -863,6 +925,8 @@
     var entry = { id:id, refId:refId, kind:kind, dateKey:dateKey, status:status,
       reason:(opts && opts.reason) || null, updatedAt:new Date().toISOString() };
     if(idx===-1) state.scheduleEntries.push(entry); else state.scheduleEntries[idx] = entry;
+    // 끝난 일정(완료·조금 함·못함·건너뜀·미리 건너뜀)은 더 이상 "곧 시작해요" 알림이 필요 없으니 취소해요.
+    cancelNativeReminder(id);
   }
   function snoozeEntry(label, minutes){
     var demoSeconds = minutes === 10 ? 6 : 10; // 데모라서 실제 분 대신 압축된 시간으로 시연해요
@@ -2993,6 +3057,9 @@
   // 실제 앱이라면 이 부분이 기기의 로컬/푸시 알림 스케줄러가 될 자리예요.
   var firedReminderIds = {};
   function checkReminders(){
+    // 네이티브 앱(Capacitor)에서는 OS가 예약된 알림을 직접 울려주니까, 여기서 화면 안
+    // 타이머로 또 울리면 앱이 켜져 있는 동안 두 번 알림이 뜨는 꼴이라 건너뛰어요.
+    if(isNativeApp()) return;
     var dateKey = todayKey(), now = new Date();
     var nowMinutes = now.getHours()*60+now.getMinutes();
     buildTimetableForDate(dateKey).forEach(function(row){
@@ -3018,6 +3085,19 @@
     render();
   }
 
+  // 네이티브 앱에서 처음 켜질 때 한 번: 알림 권한을 요청하고(iOS/Android 13+ 둘 다 이
+  // 호출 하나로 처리돼요), 안드로이드 알림 채널을 만들고, 오늘 알림을 전부 예약해요.
+  // 브라우저 프로토타입에서는 nativeNotifPlugin()이 null이라 그냥 아무 일도 안 해요.
+  function setupNativeNotifications(){
+    var plugin = nativeNotifPlugin();
+    if(!plugin) return;
+    plugin.requestPermissions().catch(function(){});
+    if(plugin.createChannel){
+      plugin.createChannel({ id:'godsaeng-reminders', name:'일정 알림', importance:4 }).catch(function(){});
+    }
+    syncAllNativeRemindersForToday();
+  }
+
   // 1분마다 시계 갱신 + 알림 체크 — 열려있는 시트가 없을 때만 화면을 다시 그려서, 조작 중인
   // 모달이 리셋되지 않게 해요. 알림 체크는 모달이 열려 있어도 계속 돌아가요.
   setInterval(function(){
@@ -3025,6 +3105,7 @@
     if(!ui.sheet && !ui.overlap && !ui.energy && !ui.checkin && !ui.quickAdd && !ui.form) render();
   }, 60000);
   checkReminders();
+  setupNativeNotifications();
 
   render();
 })();
