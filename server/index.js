@@ -190,6 +190,111 @@ app.post('/api/parse', async (req, res) => {
   }
 });
 
+// "오늘 좀 피곤하시군요" 화면의 "다르게 조정하기"가 호출해요. 앱에 미리 정해둔 축소판
+// (minVersion)이 있는 일정만 다룰 수 있던 규칙 기반 제안과 달리, 여기는 사용자가 자유
+// 문장으로 이유를 설명하면(예: "오늘 집 정리 때문에 바빠요") 그 이유에 맞게 오늘 남은
+// 일정(고정 일정 제외) 중 뭘 줄이고 뭘 건너뛸지 Claude가 직접 판단해서 돌려줘요. 실제
+// 반영은 항상 앱에서, 사용자가 결과를 보고 "이대로 적용"을 눌러야만 일어나요.
+const ADJUST_TOOL = {
+  name: 'respond_with_adjustments',
+  description:
+    '사용자가 설명한 오늘 상황(피곤함/바쁨의 이유)에 맞게, context.items로 받은 오늘 남은 일정 각각을 어떻게 할지 결정해서 돌려줘요.',
+  input_schema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      summary: {
+        type: 'string',
+        description: '무엇을 왜 이렇게 조정했는지 한두 문장으로 사용자에게 보여줄 자연스러운 한국어 설명.',
+      },
+      adjustments: {
+        type: 'array',
+        description: 'context.items에 있던 일정마다 하나씩. 손대지 않을 일정은 decision을 keep으로 하거나 아예 배열에서 빼도 돼요.',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            refId: { type: 'string', description: 'context.items 중 하나의 refId.' },
+            kind: { type: 'string', enum: ['session', 'adhoc'], description: 'context.items 중 하나의 kind.' },
+            decision: {
+              type: 'string',
+              enum: ['shrink', 'skip', 'keep'],
+              description: 'shrink=시간을 줄인 축소판으로 바꿈, skip=오늘 하루 건너뜀, keep=그대로 둠.',
+            },
+            newLabel: { type: 'string', description: 'decision이 shrink일 때, 줄인 버전의 새 이름(예: "핵심만 15분").' },
+            newDurationMinutes: { type: 'integer', description: 'decision이 shrink일 때, 줄인 소요시간(분). 원래보다 짧아야 해요.' },
+          },
+          required: ['refId', 'kind', 'decision'],
+        },
+      },
+    },
+    required: ['summary', 'adjustments'],
+  },
+};
+
+const ADJUST_SYSTEM_PROMPT = `당신은 "갓생살자"라는 한국어 개인 일정 비서 앱에서, 사용자가 오늘 피곤하거나
+바쁘다고 느낄 때 일정을 어떻게 줄이면 좋을지 판단하는 역할입니다. 사용자의 한국어
+설명과 함께 context.items(오늘 남은, 고정이 아닌 일정 목록: refId, kind, label,
+time, durationMinutes, existingMinVersion)를 JSON으로 받습니다.
+
+규칙:
+1. 반드시 respond_with_adjustments 도구를 한 번 호출해서만 답하세요.
+2. 사용자의 이유가 앱이 미리 정해둔 축소판(existingMinVersion)과 관련 없는 일이어도
+   (예: "집 정리", "부모님 오셔서" 등) 괜찮아요 — 그 이유에 맞게 각 일정을 얼마나 줄일지,
+   아예 뺄지 직접 판단해서 새로운 축소판 이름과 시간을 만들어내세요. existingMinVersion이
+   있으면 참고하되 그대로 베끼지 말고 사용자 상황에 맞게 조정해도 됩니다.
+3. shrink로 정할 때 newDurationMinutes는 항상 원래 durationMinutes보다 짧아야 하고,
+   너무 짧게(5분 미만) 줄이지 마세요.
+4. 사용자가 말한 이유의 심각도에 비례해서 조정하세요 — 살짝 바쁘다고 하면 1~2개만 줄이고,
+   많이 바쁘다/시간이 없다고 하면 더 많이 줄이거나 건너뛰세요. 언급되지 않은 일정을
+   무작정 다 건드리지 마세요.
+5. 정말 아무것도 줄일 필요가 없어 보이면 adjustments를 빈 배열로 두고 summary에 그 이유를
+   설명하세요.
+6. 존댓말을 쓰고, summary는 한두 문장으로 짧게 쓰세요.`;
+
+app.post('/api/adjust-burden', async (req, res) => {
+  try {
+    if (SHARED_SECRET) {
+      const provided = req.header('x-app-secret');
+      if (provided !== SHARED_SECRET) {
+        return res.status(401).json({ error: 'unauthorized' });
+      }
+    }
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    if (isRateLimited(ip)) {
+      return res.status(429).json({ error: 'rate_limited' });
+    }
+
+    const { message, context } = req.body || {};
+    if (!message || typeof message !== 'string') {
+      return res.status(400).json({ error: 'message(string)가 필요해요.' });
+    }
+    const items = (context && Array.isArray(context.items)) ? context.items : [];
+
+    const userContent = JSON.stringify({ message, context: { items } });
+
+    const response = await anthropic.messages.create({
+      model: MODEL,
+      max_tokens: 1024,
+      system: ADJUST_SYSTEM_PROMPT,
+      tools: [ADJUST_TOOL],
+      tool_choice: { type: 'tool', name: 'respond_with_adjustments' },
+      messages: [{ role: 'user', content: userContent }],
+    });
+
+    const toolUse = response.content.find((block) => block.type === 'tool_use');
+    if (!toolUse) {
+      return res.json({ summary: '죄송해요, 잘 이해하지 못했어요. 다시 말씀해주실래요?', adjustments: [] });
+    }
+    return res.json(toolUse.input);
+  } catch (err) {
+    console.error('[adjust-burden error]', err);
+    return res.status(500).json({
+      error: String(err && err.message ? err.message : err),
+    });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`갓생살자 assistant server listening on :${PORT} (model=${MODEL})`);
 });

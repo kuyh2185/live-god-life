@@ -254,7 +254,7 @@
   .compare-col.new.skip .lbl, .compare-col.new.skip .meta{color:var(--warn);}
   .compare-arrow{font-size:15px; color:var(--text-faint); font-weight:700;}
   .compare-total{margin-top:10px; padding-top:10px; border-top:1px solid var(--border);
-    font-size:13.5px; font-weight:800; text-align:right;}
+    font-size:13.5px; font-weight:800; text-align:left;}
   .compare-note{font-size:11.5px; color:var(--text-faint); margin-top:10px; line-height:1.55;}
 
   /* ── 오늘 탭 리디자인(v36): 인사 카드 + 마스코트 + 컬러 점 타임라인 ──
@@ -287,21 +287,8 @@
   .share-btn{background:var(--accent-soft); border:none; color:var(--accent); font-size:12px; font-weight:800;
     display:flex; align-items:center; gap:4px; cursor:pointer; padding:7px 12px; border-radius:999px;}
 
-  /* ── 피곤해요 전/후 비교: 시간대별 컬러 블록 타임라인 ── */
-  /* v42: 빨강/초록 대비가 이 앱의 "비난하지 않는" 톤과 안 맞는다는 피드백으로, 무채색(전) +
-     브랜드 그린 한 가지(후)로 바꾸고 배지도 가운데로 옮겼어요. */
-  .tl-compare{display:flex; gap:12px; margin-top:6px;}
-  .tl-col{flex:1; min-width:0; text-align:center;}
-  .tl-col-badge{display:inline-flex; padding:5px 12px; border-radius:999px; font-size:11px; font-weight:800; margin-bottom:10px;}
-  .tl-col-badge.before{background:var(--chip-bg); color:var(--text-muted); border:1px solid var(--border);}
-  .tl-col-badge.after{background:var(--accent-soft); color:var(--accent); border:1px solid var(--accent);}
-  .tl-track{position:relative;}
-  .tl-gridline{position:absolute; left:34px; right:0; height:1px; background:var(--border);}
-  .tl-hour{position:absolute; left:0; top:0; font-size:10.5px; font-weight:700; color:var(--text-faint); transform:translateY(-5px); width:30px; text-align:right;}
-  .tl-block{position:absolute; left:36px; right:2px; border-radius:8px; padding:4px 8px; font-size:11.5px;
-    font-weight:800; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; line-height:1.8; border:1.5px solid transparent;}
-  .tl-block.skip{background:none!important; border:1.5px dashed var(--text-faint)!important; color:var(--text-faint)!important;
-    font-weight:700; display:flex; align-items:center; justify-content:center; white-space:normal; text-align:center; line-height:1.3;}
+  /* ── "다르게 조정하기" 창은 좁은 2단 비교라 답답하다는 피드백으로 더 넓게 써요 ── */
+  .sheet.sheet-wide{max-width:460px;}
 
   /* ── 기상·취침 루틴 펼침 영역: 토글 바로 아래 촘촘하게 붙어 답답해 보이던 걸, 카드로 묶고
      여백을 넉넉히 줘서 눈에 편하게 했어요. ── */
@@ -533,7 +520,10 @@
       // 자동으로 읽어줘요 — 이어폰 없이 밖에서 일정이 갑자기 소리로 흘러나오는 걸 막기 위해서예요.
       voice:{ ttsEnabled:true, rate:1, headphonesConnected:false },
       // 알림이 올 때 무음/진동/소리 중 어떻게 알려줄지 — 기상·취침·일정 알림 모두에 적용돼요.
-      notify:{ alertStyle:'sound' },
+      // volume은 띠링 소리의 크기(0~1), vibrateIntensity는 진동 패턴의 세기예요. 실제 기기의
+      // 진동 모터 세기(진폭) 자체는 웹/Capacitor Vibration API로 조절할 수 없어서, 대신 진동이
+      // 얼마나 길고 촘촘한지(패턴)로 "약하다/강하다"를 표현해요.
+      notify:{ alertStyle:'sound', volume:0.6, vibrateIntensity:'medium' },
       // 장기 목표를 매번 잘게 쪼개진 않지만, 최소한 "나의 목표"를 한 줄로 적어두면
       // 오늘 무엇을 지킬지 판단 기준이 생겨요(목표 계층의 가장 가벼운 버전). 오늘 탭의
       // 인사 카드 자리에 크게 보여줘서, 열 때마다 자연스럽게 떠올리게 해요. 온보딩에서
@@ -782,71 +772,6 @@
     if(condition==='mid') return busy ? { withMinVersion: withMinVersion, withoutMinVersion: withoutMinVersion }
                                        : { withMinVersion: withMinVersion, withoutMinVersion: [] };
     return busy ? { withMinVersion: withMinVersion, withoutMinVersion: [] } : { withMinVersion: [], withoutMinVersion: [] };
-  }
-
-  // v41: "전체 시간표로 비교하기"(하루 24시간을 다 펼치는 버전)가 대부분 회색인 빈 시간대만
-  // 많아서 조잡해 보인다는 피드백으로, 이제는 실제로 바뀌는 항목만 담은 짧은 미리보기를
-  // 만들어요. 여기 담기는 항목은 정의상 전부 "바뀌는 항목"이라 past/changed 판단이 필요
-  //없고, before는 항상 빨강, after는 항상 초록으로 칠해져요(renderTimelineCompare 재사용).
-  function computeChangedTimelineRows(s){
-    var before = [], after = [];
-    s.withMinVersion.forEach(function(item){
-      before.push({refId:item.refId, label:item.label, time:item.time, duration:item.duration, changed:true, past:false});
-      after.push({refId:item.refId, label:item.minVersion, time:item.time, duration:item.miniDuration, changed:true, past:false});
-    });
-    s.withoutMinVersion.forEach(function(item){
-      before.push({refId:item.refId, label:item.label, time:item.time, duration:item.duration, changed:true, past:false});
-      // 건너뛰는 일정은 after 쪽을 아예 비워두면 "왜 아무것도 없지" 싶어 보여서, 같은 시간·
-      // 길이 자리에 "오늘은 건너뛰어요" 점선 블록을 대신 넣어요.
-      after.push({refId:item.refId, label:'오늘은 건너뛰어요', time:item.time, duration:item.duration, changed:true, past:false, skip:true});
-    });
-    return { before: before, after: after };
-  }
-
-  function renderTimelineCompare(before, after){
-    var all = before.concat(after);
-    if(all.length===0) return '';
-    var minStart = Math.min.apply(null, all.map(function(r){ var hm=parseHM(r.time); return hm.hour*60+hm.minute; }));
-    var maxEnd = Math.max.apply(null, all.map(function(r){ var hm=parseHM(r.time); return hm.hour*60+hm.minute+r.duration; }));
-    var rangeStart = Math.floor(minStart/60)*60;
-    var rangeEnd = Math.max(rangeStart+60, Math.ceil(maxEnd/60)*60);
-    var totalHours = (rangeEnd-rangeStart)/60;
-    // 가시성 피드백 반영: 일정이 많을 때 블록이 너무 다닥다닥 붙어 안 읽혀서, 시간당 높이를
-    // 넉넉히 늘렸어요(모달 자체가 스크롤되니 세로로 길어져도 괜찮아요).
-    var HOUR_PX = 46;
-    var trackHeight = totalHours*HOUR_PX;
-    // 색상 전면 개편: 예전엔 itemColor(refId) 해시로 모든 블록에 무지개색을 입혀서 오히려
-    // 뭐가 바뀌는지 눈에 안 들어온다는 피드백이 있었어요. 이제는 "실제로 바뀌는 항목"만
-    // 색을 주고(전/후가 서로 다른 색), 안 바뀌는 항목·이미 지난 항목은 전부 회색이에요.
-    function blockColor(it, side){
-      if(it.past || !it.changed) return { bg:'var(--chip-bg)', fg:'var(--text-muted)', border:'var(--border)' };
-      return side==='before' ? { bg:'var(--chip-bg)', fg:'var(--text)', border:'var(--text-faint)' }
-                              : { bg:'var(--accent-soft)', fg:'var(--accent)', border:'var(--accent)' };
-    }
-    function col(items, side){
-      var h = '<div class="tl-track" style="height:'+trackHeight+'px;">';
-      for(var i=0;i<=totalHours;i++){
-        h += '<div class="tl-gridline" style="top:'+(i*HOUR_PX)+'px;"></div>';
-        h += '<div class="tl-hour" style="top:'+(i*HOUR_PX)+'px;">'+pad2(Math.floor(rangeStart/60+i)%24)+':00</div>';
-      }
-      items.forEach(function(it){
-        var hm = parseHM(it.time);
-        var top = ((hm.hour*60+hm.minute-rangeStart)/60)*HOUR_PX;
-        var height = Math.max(20, (it.duration/60)*HOUR_PX - 3);
-        if(it.skip){
-          h += '<div class="tl-block skip" style="top:'+top+'px; height:'+height+'px;">'+esc(it.label)+'</div>';
-          return;
-        }
-        var c = blockColor(it, side);
-        h += '<div class="tl-block" style="top:'+top+'px; height:'+height+'px; background:'+c.bg+'; color:'+c.fg+'; border-color:'+c.border+';">'+esc(it.label)+'</div>';
-      });
-      h += '</div>';
-      return h;
-    }
-    return '<div class="tl-compare">' +
-      '<div class="tl-col"><span class="tl-col-badge before">너무 많아요</span>'+col(before,'before')+'</div>' +
-      '<div class="tl-col"><span class="tl-col-badge after">이제 괜찮아요</span>'+col(after,'after')+'</div>' +
-      '</div>';
   }
 
   // ───────────────────────── 액션 (store 로직 포팅) ─────────────────────────
@@ -2028,6 +1953,11 @@
   // v40: 변경 요약을 맨 위에 먼저 보여주고(몇 개가 바뀌는지, 얼마나 줄어드는지), 전체
   // 좌우 타임라인은 "전체 시간표로 비교하기"를 펼쳐야 나오게 순서를 바꿨어요. 긴 타임라인을
   // 먼저 끝까지 읽어야 뭐가 바뀌는지 알 수 있던 문제를 해결하기 위해서예요.
+  // v46: "직접 수정"과 "오늘은 내가 정할게요"가 둘 다 "내가 알아서 할게요"로 읽혀서 헷갈린다는
+  // 피드백으로 하나로 합쳤어요("다르게 조정하기"). 그 안에서 AI 서버가 연결돼 있으면 자유
+  // 문장으로("집 정리 때문에 바빠요" 같은, 미리 정해둔 minVersion이 없는 이유도) 요청할 수
+  // 있고, 없으면 예전처럼 일정별 수동 선택으로 안내해요. 전/후 비교도 좁은 2단 타임라인 대신
+  // 한 줄씩 넓게 보여주는 목록(.compare-row)으로 바꿔서 좀 더 여유 있게 읽히게 했어요.
   function renderEnergyModal(){
     var f = ui.energy;
     var dateKey = curDateKey();
@@ -2038,33 +1968,23 @@
       if(!hasFatigueContent){
         body += '<div class="sheet-sub">지금은 줄이거나 건너뛸 만한 일정이 없어요.</div>';
       } else {
-        var changeLines = [];
-        s.withMinVersion.forEach(function(item){
-          changeLines.push(esc(item.label)+': '+formatDurationHM(item.duration)+' → '+esc(item.minVersion)+' '+formatDurationHM(item.miniDuration));
-        });
-        s.withoutMinVersion.forEach(function(item){ changeLines.push(esc(item.label)+': 오늘만 제외'); });
+        var changeList = buildRuleBasedChangeList(s);
         var totalReduced = 0;
         s.withMinVersion.forEach(function(item){ totalReduced += Math.max(0, item.duration - item.miniDuration); });
         s.withoutMinVersion.forEach(function(item){ totalReduced += item.duration; });
 
         var reasonCheckin = state.checkins[dateKey];
-        // v42: 이유 문장 + 아래 전/후 타임라인이면 충분히 설명돼서, 같은 내용을 또 글로
-        // 나열하던 목록(change-summary)은 중복이라 뺐어요.
-        body += '<div class="sheet-sub" style="margin-top:0;">'+buildAdjustReason(dateKey, reasonCheckin, changeLines.length, totalReduced)+'</div>';
+        body += '<div class="sheet-sub" style="margin-top:0;">'+buildAdjustReason(dateKey, reasonCheckin, changeList.length, totalReduced)+'</div>';
         body += '<div class="compare-total">예상 부담 '+formatDurationHM(totalReduced)+' 감소 · 나머지 일정은 그대로 유지돼요</div>';
-
-        // "전체 시간표로 비교하기"(하루 24시간 다 펼치는 버전)가 대부분 회색인 빈 시간대만
-        // 많고 조잡해 보인다는 피드백으로, 이제는 아예 만들지 않고 실제로 바뀌는 항목만
-        // 담은 짧은 미리보기를 항상 보여줘요.
-        var changed = computeChangedTimelineRows(s);
-        body += '<div class="compare-block">'+renderTimelineCompare(changed.before, changed.after)+'</div>';
+        body += '<div class="compare-block">'+renderChangeRows(changeList)+'</div>';
         body += '<div class="compare-note">건너뛰는 일정은 오늘 하루만 적용돼요. 반복 일정 자체는 그대로 남아있고, 내일부터는 원래 시간으로 다시 나와요.</div>';
         body += '<div style="margin-top:14px;">';
         body += btn('제안대로 적용', 'primary', "appAction('energyApplyAll')");
-        body += btn('직접 수정', 'secondary', "appAction('energySetView','manual')");
-        body += btn('오늘은 내가 정할게요', 'ghost', "appAction('energyClose')");
+        body += btn('다르게 조정하기', 'secondary', "appAction('energySetView','adjust')");
         body += '</div>';
       }
+    } else if(f.view==='adjust'){
+      body += renderEnergyAdjustView(f);
     } else {
       body += '<div class="sheet-sub">일정별로 하나씩 골라볼게요.</div>';
       body += '<div style="max-height:340px; overflow-y:auto; margin-top:8px;">';
@@ -2084,8 +2004,93 @@
       body += '</div>'+btn('뒤로', 'ghost', "appAction('energySetView','summary')");
     }
     body += '<button class="btn btn-ghost" style="margin-top:14px;" onclick="appAction(\'energyClose\')">닫기</button>';
-    return '<div class="overlay" onclick="appAction(\'energyClose\')"><div class="sheet" onclick="event.stopPropagation()">' +
+    return '<div class="overlay" onclick="appAction(\'energyClose\')"><div class="sheet sheet-wide" onclick="event.stopPropagation()">' +
       '<div class="sheet-title">오늘 좀 피곤하시군요</div>'+body+'</div></div>';
+  }
+
+  // "다르게 조정하기" — AI 서버가 연결돼 있으면 자유 문장으로 요청받아 서버(Claude)가 오늘
+  // 남은 일정 중 뭘 줄이고 뭘 건너뛸지 직접 판단하게 해요(미리 정해둔 minVersion이 없는
+  // 일이라도, 예를 들어 "집 정리 때문에 바빠요"도 그 자리에서 적당한 축소안을 만들어줘요).
+  // 서버가 없으면 예전처럼 일정별 수동 선택(manual)으로 안내해요.
+  function renderEnergyAdjustView(f){
+    var serverUrl = (state.settings.aiServer.url||'').trim();
+    var body = '';
+    if(!serverUrl){
+      body += '<div class="sheet-sub" style="margin-top:0;">AI 서버를 연결하면 "집 정리 때문에 바빠요"처럼 자유롭게 설명해서 요청할 수 있어요(설정 → 비서). 지금은 서버가 연결돼 있지 않아서, 일정별로 직접 골라볼게요.</div>';
+      body += btn('일정별로 직접 고르기', 'primary', "appAction('energySetView','manual')");
+    } else if(f.aiPlan){
+      body += '<div class="sheet-sub" style="margin-top:0;">'+esc(f.aiPlan.summary||'이렇게 조정하면 어떨까요?')+'</div>';
+      var aiChangeList = buildChangeListFromAiPlan(f.aiPlan, f.aiItems||[]);
+      if(aiChangeList.length===0){
+        body += '<div class="sheet-sub">지금 상황으로는 딱히 줄이거나 뺄 만한 일정을 찾지 못했어요.</div>';
+      } else {
+        body += '<div class="compare-block">'+renderChangeRows(aiChangeList)+'</div>';
+      }
+      body += '<div style="margin-top:14px;">';
+      if(aiChangeList.length>0) body += btn('이대로 적용', 'primary', "appAction('energyApplyAiPlan')");
+      body += btn('다시 요청하기', 'secondary', "appAction('energyRetryAi')");
+      body += '</div>';
+    } else {
+      body += '<div class="sheet-sub" style="margin-top:0;">오늘 상황을 자유롭게 설명해주세요. 미리 정해둔 목록에 없는 이유라도 괜찮아요.</div>';
+      body += '<textarea class="textfield" style="min-height:84px; resize:vertical; font-family:inherit;" placeholder="예: 오늘 집 정리 때문에 시간이 많이 필요해요" oninput="appAction(\'setEnergyAiText\',this.value)">'+esc(f.aiText||'')+'</textarea>';
+      if(f.aiError) body += '<div class="sheet-sub" style="color:var(--danger); margin-top:-6px;">'+esc(f.aiError)+'</div>';
+      body += btn(f.aiLoading ? '요청하는 중…' : 'AI에게 요청하기', 'primary', f.aiLoading ? "void(0)" : "appAction('energyRequestAi')");
+      body += btn('일정별로 직접 고를게요', 'ghost', "appAction('energySetView','manual')");
+    }
+    body += btn('뒤로', 'ghost', "appAction('energySetView','summary')");
+    return body;
+  }
+
+  // 규칙 기반 제안(computeFatigueSuggestion 결과)을 renderChangeRows가 그릴 수 있는
+  // 공통 모양({time, fromLabel, fromDuration, toLabel, toDuration, skip})으로 바꿔요.
+  function buildRuleBasedChangeList(s){
+    var list = [];
+    s.withMinVersion.forEach(function(item){
+      list.push({ time:item.time, fromLabel:item.label, fromDuration:item.duration,
+        toLabel:item.minVersion, toDuration:item.miniDuration, skip:false });
+    });
+    s.withoutMinVersion.forEach(function(item){
+      list.push({ time:item.time, fromLabel:item.label, fromDuration:item.duration,
+        toLabel:null, toDuration:null, skip:true });
+    });
+    list.sort(function(a,b){ return a.time < b.time ? -1 : a.time > b.time ? 1 : 0; });
+    return list;
+  }
+  // AI 서버가 돌려준 조정안(refId·kind별 decision)을, 요청할 때 같이 보낸 items 목록과
+  // 매칭해서 같은 공통 모양으로 바꿔요. 서버가 모르는 refId를 보내거나 decision이 'keep'인
+  // 항목은 조용히 걸러요.
+  function buildChangeListFromAiPlan(plan, items){
+    var byId = {};
+    items.forEach(function(it){ byId[it.kind+':'+it.refId] = it; });
+    var list = [];
+    (plan.adjustments||[]).forEach(function(adj){
+      var it = byId[adj.kind+':'+adj.refId];
+      if(!it || adj.decision==='keep') return;
+      if(adj.decision==='skip'){
+        list.push({ time:it.time, fromLabel:it.label, fromDuration:it.durationMinutes, toLabel:null, toDuration:null, skip:true, refId:adj.refId, kind:adj.kind });
+      } else if(adj.decision==='shrink'){
+        list.push({ time:it.time, fromLabel:it.label, fromDuration:it.durationMinutes,
+          toLabel: adj.newLabel || it.label, toDuration: adj.newDurationMinutes || it.durationMinutes,
+          skip:false, refId:adj.refId, kind:adj.kind });
+      }
+    });
+    list.sort(function(a,b){ return a.time < b.time ? -1 : a.time > b.time ? 1 : 0; });
+    return list;
+  }
+  // 전/후 비교 목록 — 좁은 2단 타임라인 대신, 한 항목씩 [원래] → [바뀐 뒤]를 넓게 보여줘요
+  // (.compare-row/.compare-col은 이 화면 전용으로 미리 만들어져 있었지만 안 쓰이고 있었어요).
+  function renderChangeRows(changeList){
+    var h = '';
+    changeList.forEach(function(c){
+      var hm = parseHM(c.time), timeLabel = meridiemTimeShort(hm.hour, hm.minute);
+      h += '<div class="compare-row">';
+      h += '<div class="compare-col old"><div class="lbl">'+esc(c.fromLabel)+'</div><div class="meta">'+timeLabel+' · '+formatDurationHM(c.fromDuration)+'</div></div>';
+      h += '<div class="compare-arrow">→</div>';
+      if(c.skip) h += '<div class="compare-col new skip"><div class="lbl">오늘은 건너뛰기</div><div class="meta">'+timeLabel+'</div></div>';
+      else h += '<div class="compare-col new reduced"><div class="lbl">'+esc(c.toLabel)+'</div><div class="meta">'+timeLabel+' · '+formatDurationHM(c.toDuration)+'</div></div>';
+      h += '</div>';
+    });
+    return h;
   }
 
   // 자동조정이 왜 이렇게 제안됐는지 한 줄로 설명해요 — 근거 없이 "줄일게요"만 보여주면
@@ -2621,9 +2626,9 @@
     ['assistant','비서','성향과 자연어 대화 서버'],
     ['notifications','알림','알림 스타일 · 음성 안내'],
     ['external','외부 연동','캘린더 · 시간표 가져오기'],
-    ['other','기타','']
+    ['other','사용 방법','']
   ];
-  var SETTINGS_SECTION_TITLE = {assistant:'비서', notifications:'알림', external:'외부 연동', other:'기타'};
+  var SETTINGS_SECTION_TITLE = {assistant:'비서', notifications:'알림', external:'외부 연동', other:'사용 방법'};
   function renderSettings(){
     if(ui.settingsSection) return renderSettingsSection(ui.settingsSection);
     var html = '';
@@ -2666,6 +2671,24 @@
         html += chip(o[1], state.settings.notify.alertStyle===o[0], "appAction('setAlertStyle','"+o[0]+"')");
       });
       html += '</div>';
+
+      if(state.settings.notify.alertStyle==='sound'){
+        html += '<div class="settings-row"><div><div class="t">소리 크기</div><div class="d">띠링 알림음의 크기예요.</div></div></div>';
+        html += '<div class="preset-row" style="justify-content:flex-start;">';
+        [['weak','약하게',0.25],['medium','보통',0.6],['strong','강하게',1]].forEach(function(o){
+          html += chip(o[1], state.settings.notify.volume===o[2], "appAction('setNotifyVolume',"+o[2]+")");
+        });
+        html += '</div>';
+        html += '<button class="btn btn-secondary" onclick="appAction(\'previewAlert\')">소리 미리 듣기</button>';
+      } else if(state.settings.notify.alertStyle==='vibrate'){
+        html += '<div class="settings-row"><div><div class="t">진동 세기</div><div class="d">진동이 울리는 길이·횟수예요(기기의 진동 모터 진폭 자체는 조절할 수 없어요).</div></div></div>';
+        html += '<div class="preset-row" style="justify-content:flex-start;">';
+        [['weak','약하게'],['medium','보통'],['strong','강하게']].forEach(function(o){
+          html += chip(o[1], state.settings.notify.vibrateIntensity===o[0], "appAction('setVibrateIntensity','"+o[0]+"')");
+        });
+        html += '</div>';
+        html += '<button class="btn btn-secondary" onclick="appAction(\'previewAlert\')">진동 미리 느껴보기</button>';
+      }
 
       html += '<div class="section-title">음성 안내</div>';
       html += '<div class="settings-row"><div><div class="t">음성 안내 사용</div>' +
@@ -2847,7 +2870,7 @@
       case 'overlapClose': ui.overlap = null; break;
       case 'dismissOverlapToday': ui.overlapDismissed = true; break;
 
-      case 'openEnergyAdjustment': ui.energy = {view:'summary', doneIds:[]}; break;
+      case 'openEnergyAdjustment': ui.energy = {view:'summary', doneIds:[], aiText:'', aiLoading:false, aiError:null, aiPlan:null, aiItems:null}; break;
       case 'energyClose': ui.energy = null; break;
       case 'energySetView': ui.energy.view = args[0]; break;
       case 'energyApplyOne': {
@@ -2864,6 +2887,13 @@
         var s = computeFatigueSuggestion(curDateKey(), now);
         s.withMinVersion.forEach(applyMiniVersion);
         s.withoutMinVersion.forEach(function(item){ setEntryStatus(item.kind, item.refId, curDateKey(), 'excused', {reason:'too_tired'}); });
+        ui.energy = null; break;
+      }
+      case 'setEnergyAiText': ui.energy.aiText = args[0]; return;
+      case 'energyRequestAi': requestEnergyAiAdjustment(); break;
+      case 'energyRetryAi': ui.energy.aiPlan = null; ui.energy.aiItems = null; ui.energy.aiError = null; break;
+      case 'energyApplyAiPlan': {
+        applyAiPlan(ui.energy.aiPlan, ui.energy.aiItems||[]);
         ui.energy = null; break;
       }
 
@@ -3015,6 +3045,9 @@
       case 'setAiServerSecret': state.settings.aiServer.secret = args[0]; ui.aiServerStatus = null; return;
       case 'testAiServer': testAiServerConnection(); return;
       case 'setAlertStyle': state.settings.notify.alertStyle = args[0]; break;
+      case 'setNotifyVolume': state.settings.notify.volume = args[0]; break;
+      case 'setVibrateIntensity': state.settings.notify.vibrateIntensity = args[0]; break;
+      case 'previewAlert': fireAlert(); break;
       case 'routineTimeStep': {
         var rkey = args[0]==='wake' ? 'wakeTimes' : 'sleepTimes';
         var rday = ui.routineEditDay;
@@ -3202,6 +3235,65 @@
     }
   }
 
+  // "다르게 조정하기"에서 자유 문장을 AI 서버(server/index.js의 /api/adjust-burden)로
+  // 보내요. 미리 정해둔 minVersion이 있는 일정뿐 아니라, 오늘 남은 일정 전부(고정 제외)를
+  // 후보로 보내서 서버(Claude)가 사용자의 이유에 맞게 뭘 줄이고 뺄지 직접 판단하게 해요.
+  function buildEnergyAiItems(dateKey){
+    var nowMinutes = new Date().getHours()*60+new Date().getMinutes();
+    return buildTimetableForDate(dateKey).filter(function(r){
+      if(r.isFixed) return false;
+      var live = deriveLiveStatus(r, nowMinutes);
+      if(FINISHED.indexOf(live)!==-1 || live==='in_progress' || live==='awaiting_result') return false;
+      if(r.isMiniVersion) return false;
+      return true;
+    }).map(function(r){
+      return { refId:r.refId, kind:r.kind, label:r.label, time:r.time, durationMinutes:r.duration, existingMinVersion:r.minVersion||null };
+    });
+  }
+  function requestEnergyAiAdjustment(){
+    var text = (ui.energy.aiText||'').trim();
+    if(!text){ ui.energy.aiError = '어떤 상황인지 먼저 적어주세요.'; return; }
+    var serverUrl = (state.settings.aiServer.url||'').trim();
+    if(!serverUrl){ ui.energy.aiError = 'AI 서버가 설정되지 않았어요.'; return; }
+    var dateKey = curDateKey();
+    var items = buildEnergyAiItems(dateKey);
+    ui.energy.aiLoading = true; ui.energy.aiError = null;
+    var base = serverUrl.replace(/\/+$/,'');
+    var headers = {'Content-Type':'application/json'};
+    if(state.settings.aiServer.secret) headers['x-app-secret'] = state.settings.aiServer.secret;
+    fetch(base+'/api/adjust-burden', {
+      method:'POST', headers:headers,
+      body: JSON.stringify({ message:text, context:{ items:items } })
+    }).then(function(res){ return res.json(); }).then(function(data){
+      if(!ui.energy) return; // 응답 오는 사이 모달이 닫혔으면 조용히 무시해요
+      ui.energy.aiLoading = false;
+      if(data && data.adjustments){ ui.energy.aiPlan = data; ui.energy.aiItems = items; }
+      else ui.energy.aiError = (data && data.error) ? String(data.error) : '요청을 이해하지 못했어요. 다시 시도해주세요.';
+      render();
+    }).catch(function(){
+      if(!ui.energy) return;
+      ui.energy.aiLoading = false;
+      ui.energy.aiError = '서버에 연결하지 못했어요. 잠시 후 다시 시도해주세요.';
+      render();
+    });
+  }
+  function applyAiPlan(plan, items){
+    if(!plan) return;
+    var byId = {};
+    items.forEach(function(it){ byId[it.kind+':'+it.refId] = it; });
+    (plan.adjustments||[]).forEach(function(adj){
+      var it = byId[adj.kind+':'+adj.refId];
+      if(!it) return;
+      if(adj.decision==='shrink'){
+        applyMiniVersion({ kind:adj.kind, refId:adj.refId,
+          minVersion: adj.newLabel || it.label,
+          miniDuration: adj.newDurationMinutes || computeMiniDuration(it.durationMinutes) });
+      } else if(adj.decision==='skip'){
+        setEntryStatus(adj.kind, adj.refId, curDateKey(), 'excused', {reason:'too_tired'});
+      }
+    });
+  }
+
   function speakText(text){
     try{
       if(!('speechSynthesis' in window)) return;
@@ -3216,30 +3308,39 @@
   }
 
   // 짧은 "띠링" 알림음 — 외부 오디오 파일 없이 Web Audio API로 두 음을 순서대로 울려요.
-  function playChime(){
+  // volume(0~1)은 설정의 "소리 크기"를 그대로 반영해요(피크 게인에 곱함).
+  function playChime(volume){
     try{
       var Ctx = window.AudioContext || window.webkitAudioContext;
       if(!Ctx) return;
       var ctx = new Ctx();
+      var peak = 0.22 * (typeof volume==='number' ? volume : 0.6);
       [880, 1320].forEach(function(freq, i){
         var t0 = ctx.currentTime + i*0.14;
         var osc = ctx.createOscillator(), gain = ctx.createGain();
         osc.type = 'sine'; osc.frequency.value = freq;
         gain.gain.setValueAtTime(0.001, t0);
-        gain.gain.exponentialRampToValueAtTime(0.16, t0+0.02);
+        gain.gain.exponentialRampToValueAtTime(Math.max(0.001, peak), t0+0.02);
         gain.gain.exponentialRampToValueAtTime(0.001, t0+0.3);
         osc.connect(gain); gain.connect(ctx.destination);
         osc.start(t0); osc.stop(t0+0.32);
       });
     }catch(e){}
   }
+  // 진동 세기별 패턴(밀리초, [진동,멈춤,진동,...]) — 진동 모터의 진폭 자체는 Vibration API로
+  // 조절할 수 없어서, 길이·반복 횟수로 "약하다/강하다"를 표현해요.
+  var VIBRATE_PATTERNS = { weak:[60], medium:[120,80,120], strong:[200,90,200,90,200] };
   // 기상·취침·일정 알림이 뜰 때마다 이걸 같이 불러요 — 설정의 "알림 스타일"에 따라
   // 소리(띠링)를 낼지, 진동만 줄지, 아무 것도 안 낼지(무음, 배너만) 정해요. 이어폰 연결
   // 시 음성으로 자동으로 읽어주는 것과는 별개예요(그건 fireReminder에서 따로 처리해요).
   function fireAlert(){
     var style = state.settings.notify.alertStyle;
-    if(style==='sound') playChime();
-    else if(style==='vibrate'){ try{ if(navigator.vibrate) navigator.vibrate([120,80,120]); }catch(e){} }
+    if(style==='sound') playChime(state.settings.notify.volume);
+    else if(style==='vibrate'){
+      try{
+        if(navigator.vibrate) navigator.vibrate(VIBRATE_PATTERNS[state.settings.notify.vibrateIntensity] || VIBRATE_PATTERNS.medium);
+      }catch(e){}
+    }
   }
 
   // ── 일정 시작 전 알림 ──
