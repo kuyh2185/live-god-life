@@ -460,19 +460,24 @@
   // ───────────────────────── 상태 (실제 앱 store와 같은 모양) ─────────────────────────
   var TK = todayKey(), TK1 = addDaysKey(TK,1), TKm1 = addDaysKey(TK,-1), TKm2 = addDaysKey(TK,-2);
 
-  var state = {
-    events: [
+  // 예시(데모) 일정 데이터 — 온보딩 "예시 일정으로 둘러보기"를 다시 눌렀을 때도 똑같이
+  // 복원할 수 있도록 함수로 빼뒀어요(seedDemoData 참고). 매번 새 배열/객체를 만들어야
+  // 이전 세션에서 변형된 데이터가 섞이지 않아요.
+  function demoEvents(){
+    return [
       { id:'ev1', label:'아침 운동', time:'07:00', days:[1,3,5], duration:30, isFixed:false, isWorkout:true,
         minVersion:'스트레칭 5분만', checkinOverride:null, memo:null, paused:false, reminderMinutes:10 },
       { id:'ev2', label:'영어 스터디', time:'19:00', days:[2,4], duration:60, isFixed:false, isWorkout:false,
         minVersion:null, checkinOverride:null, memo:'단어 30개 외우기', paused:false, reminderMinutes:null },
       { id:'ev3', label:'약 챙겨 먹기', time:'08:30', days:[0,1,2,3,4,5,6], duration:5, isFixed:true, isWorkout:false,
         minVersion:null, checkinOverride:'immediately', memo:null, paused:false, reminderMinutes:5 }
-    ],
-    // 예시 일정을 일부러 빡빡하게 채워서(9개), 비서의 "간소화" 기능이 실제로 어느 정도까지
-    // 줄여주는지 체감할 수 있게 했어요. 헬스장 PT(14:00~14:30)가 전공 과제(13:00~14:30)와
-    // 겹치도록 일부러 넣어서, "겹친 일정 조정하기" 기능도 바로 테스트해볼 수 있어요.
-    adhocEntries: [
+    ];
+  }
+  // 예시 일정을 일부러 빡빡하게 채워서(9개), 비서의 "간소화" 기능이 실제로 어느 정도까지
+  // 줄여주는지 체감할 수 있게 했어요. 헬스장 PT(14:00~14:30)가 전공 과제(13:00~14:30)와
+  // 겹치도록 일부러 넣어서, "겹친 일정 조정하기" 기능도 바로 테스트해볼 수 있어요.
+  function demoAdhocEntries(){
+    return [
       { id:'ad4', label:'아침 스터디', dateKey:TK, time:'09:00', duration:60, isFixed:false,
         minVersion:'요약만 훑어보기', memo:'전공 개론', reminderMinutes:null },
       { id:'ad5', label:'팀플 회의', dateKey:TK, time:'10:00', duration:90, isFixed:false,
@@ -490,21 +495,32 @@
       { id:'ad2', label:'발표 자료 정리', dateKey:TK, time:'20:30', duration:45, isFixed:false,
         minVersion:'핵심 슬라이드 3장만 체크', memo:'금요일 발표용', reminderMinutes:null },
       { id:'ad3', label:'동아리 회의', dateKey:TK1, time:'18:00', duration:60, isFixed:false, minVersion:null, memo:null, reminderMinutes:null }
-    ],
-    scheduleEntries: [
+    ];
+  }
+  function demoScheduleEntries(){
+    return [
       { id:'ev1-'+TKm1, refId:'ev1', kind:'session', dateKey:TKm1, status:'done_full', reason:null },
       { id:'ev2-'+TKm1, refId:'ev2', kind:'session', dateKey:TKm1, status:'done_partial', reason:'too_tired' },
       { id:'ad1-'+TKm2, refId:'ev1', kind:'session', dateKey:TKm2, status:'done_none', reason:'no_time' },
       { id:'ev2-'+TKm2, refId:'ev2', kind:'session', dateKey:TKm2, status:'skipped', reason:null }
-    ],
+    ];
+  }
+  function demoChangeLog(){
+    return [
+      { id:'seed1', label:'"아침 운동" 오늘 시간 조정', at:new Date(Date.now()-1000*60*40).toISOString(), undone:false, undo:function(){} }
+    ];
+  }
+
+  var state = {
+    events: demoEvents(),
+    adhocEntries: demoAdhocEntries(),
+    scheduleEntries: demoScheduleEntries(),
     eventOccurrenceOverrides: {},
     // 오늘 컨디션 체크인 — dateKey별로 {energy, availableMinutes, mustDoId, mustDoLabel, burden, at}.
     // 하루 1~2번, 선택 항목 위주로 가볍게 받아서 "피곤해요" 제안을 규칙 기반이 아니라
     // 실제 상황 기반으로 만들어요.
     checkins: {},
-    changeLog: [
-      { id:'seed1', label:'"아침 운동" 오늘 시간 조정', at:new Date(Date.now()-1000*60*40).toISOString(), undone:false, undo:function(){} }
-    ],
+    changeLog: demoChangeLog(),
     settings: {
       interventionLevel:'moderate', // 'quiet' | 'moderate' | 'active'
       checkinTiming:'after_end',
@@ -561,6 +577,18 @@
   }
   generateDemoHistory();
 
+  // 온보딩 "예시 일정으로 둘러보기"를 다시 선택했을 때(예: 캘린더 연동/새로 시작으로 비운
+  // 뒤 온보딩을 다시 봤을 때) 예시 데이터를 항상 같은 모습으로 복원해요.
+  function seedDemoData(){
+    state.events = demoEvents();
+    state.adhocEntries = demoAdhocEntries();
+    state.scheduleEntries = demoScheduleEntries();
+    state.eventOccurrenceOverrides = {};
+    state.changeLog = demoChangeLog();
+    state.settings.calendarSync = { enabled:false, provider:null };
+    generateDemoHistory();
+  }
+
   var ui = {
     tab:'today', dayOffset:0, scheduleTab:'recurring',
     sheet:null, quickAdd:null, form:null, toast:null, notif:null,
@@ -571,7 +599,7 @@
     checkin:null, insightDismissedIds:{},
     goalEditOpen:false, goalDraft:'',
     aiServerStatus:null,
-    settingsSection:null, interventionExampleOpen:false,
+    settingsSection:null, interventionExampleOpen:false, routineModalOpen:false,
     onboardingDone:false, onboardingStep:0,
     chatOpen:false, chat:null,
     historyMonthOffset:0, historySelectedDate:null,
@@ -1064,6 +1092,7 @@
     if(ui.energy) html += renderEnergyModal();
     if(ui.checkin) html += renderCheckinModal();
     if(ui.interventionExampleOpen) html += renderInterventionExampleModal();
+    if(ui.routineModalOpen) html += renderRoutineModal();
     if(ui.quickAdd) html += renderQuickAddModal();
     if(ui.form) html += renderFormModal();
     if(ui.confirm) html += renderConfirmModal();
@@ -1123,7 +1152,7 @@
         btn('다음', 'primary', "appAction('onboardingSaveGoalNext')") + '</div>';
     } else {
       html += '<div style="display:flex; gap:10px;">' +
-        btn('예시로 둘러보기', 'ghost', "appAction('onboardingFinishWithDemo')") +
+        btn('예시 일정으로 둘러보기', 'ghost', "appAction('onboardingFinishWithDemo')") +
         btn('캘린더 연동하고 시작', 'primary', "appAction('onboardingConnectCalendar')") + '</div>';
     }
     html += '</div>';
@@ -2284,6 +2313,7 @@
       });
     }
     html += '<button class="btn btn-secondary" style="margin-top:12px;" onclick="appAction(\'openForm\',\''+(ui.scheduleTab==='recurring'?'session':'adhoc')+'\',null)">+ 새 일정</button>';
+    html += '<button class="btn btn-secondary" onclick="appAction(\'openRoutineModal\')">⏰ 기상 · 취침 일정 설정</button>';
     return html;
   }
 
@@ -2572,7 +2602,7 @@
   // 예시 보기 버튼으로 바로 확인할 수 있게 했어요.
   var SETTINGS_SECTIONS = [
     ['assistant','비서','성향과 자연어 대화 서버'],
-    ['notifications','알림','알림 스타일 · 음성 안내 · 기상 · 취침 루틴'],
+    ['notifications','알림','알림 스타일 · 음성 안내'],
     ['external','외부 연동','캘린더 · 시간표 가져오기'],
     ['other','기타','']
   ];
@@ -2628,20 +2658,7 @@
         '<div class="d">켜져 있으면 일정 알림 내용을 버튼 없이도 자동으로 음성으로 읽어줘요(이어폰으로만 들리는 상황을 가정). 꺼져 있으면 "듣기" 버튼을 직접 눌러야 들을 수 있어요. 실제 앱에서는 이어폰 연결을 자동으로 감지해요 — 여기선 프로토타입이라 직접 켜고 꺼서 시험해볼 수 있게 했어요.</div></div>' +
         toggleTrack(state.settings.voice.headphonesConnected, "appAction('toggleVoice','headphonesConnected')")+'</div>';
 
-      html += '<div class="section-title">기상 · 취침 루틴</div><div class="section-sub">매일 꼭 오는 필수 알림이에요 — 시간만 조절할 수 있어요.</div>';
-      var wt = parseHM(state.settings.routine.wakeTime);
-      html += '<div class="settings-row"><div><div class="t">기상 알림 + 컨디션 체크</div>' +
-        '<div class="d">기상 시간에 알림으로 오늘 컨디션을 확인하고, 가벼운 스트레칭과 함께 오늘 일정을 바로 브리핑해줘요.</div></div></div>';
-      html += '<div class="routine-expand"><div class="stepper-row">'+stepperHtml('기상 시간', meridiemTimeLabel(wt.hour,wt.minute), "appAction('routineTimeStep','wake',-30)", "appAction('routineTimeStep','wake',30)")+'</div>';
-      html += '<button class="btn btn-secondary" onclick="appAction(\'previewWakeRoutine\')">지금 미리보기</button></div>';
-
-      var st = parseHM(state.settings.routine.sleepTime);
-      html += '<div class="settings-row"><div><div class="t">취침 알림 + 내일 일정 미리보기</div>' +
-        '<div class="d">취침 시간에 알림으로 내일 일정을 미리 알려줘요.</div></div></div>';
-      html += '<div class="routine-expand"><div class="stepper-row">'+stepperHtml('취침 시간', meridiemTimeLabel(st.hour,st.minute), "appAction('routineTimeStep','sleep',-30)", "appAction('routineTimeStep','sleep',30)")+'</div>';
-      html += '<button class="btn btn-secondary" onclick="appAction(\'previewSleepRoutine\')">지금 미리보기</button></div>';
-
-      html += '<div class="section-sub" style="margin-top:8px;">이 화면은 프로토타입이라 실제 알림 대신, 화면 위 알림 배너로 미리보기만 보여드려요. 일정 하나하나의 "몇 분 전에 알려줄지"는 일정관리 탭에서 그 일정을 눌러 설정해요.</div>';
+      html += '<div class="section-sub" style="margin-top:8px;">기상 · 취침 시간은 일정관리 탭의 "기상 · 취침 일정 설정"에서 조절해요. 일정 하나하나의 "몇 분 전에 알려줄지"는 일정관리 탭에서 그 일정을 눌러 설정해요.</div>';
     } else if(section==='external'){
       html += '<div class="section-sub">일정을 두 번 입력하지 않아도 되게, 외부 캘린더와 양방향으로 동기화해요. 갓생살자에서 추가한 일정도 연결된 캘린더에 그대로 들어가요. 지금은 프로토타입이라 실제 동기화는 안 되고, 이 설정 자체만 저장돼요 (CALENDAR_SYNC.md 참고).</div>';
       html += '<div class="settings-row"><div><div class="t">Google 캘린더 자동 동기화</div>' +
@@ -2650,7 +2667,7 @@
       html += '<div class="settings-row"><div><div class="t">학교 시간표 가져오기</div><div class="d">강의계획표 사진이나 파일로 한 번에 등록해요.</div></div>' +
         '<button class="btn btn-secondary" style="width:auto; padding:8px 14px; margin-bottom:0;" onclick="appAction(\'externalCalendarStub\')">준비 중</button></div>';
     } else {
-      html += '<button class="btn btn-secondary" onclick="appAction(\'onboardingRestart\')">온보딩 다시 보기</button>';
+      html += '<button class="btn btn-secondary" onclick="appAction(\'onboardingRestart\')">예시 일정으로 튜토리얼 시작</button>';
     }
     return html;
   }
@@ -2676,6 +2693,25 @@
     body += '<button class="btn btn-ghost" style="margin-top:14px;" onclick="appAction(\'closeInterventionExample\')">닫기</button>';
     return '<div class="overlay" onclick="appAction(\'closeInterventionExample\')"><div class="sheet" onclick="event.stopPropagation()">' +
       '<div class="sheet-title">비서 성향별로 뭐가 달라지나요?</div>'+body+'</div></div>';
+  }
+  function renderRoutineModal(){
+    var body = '<div class="section-sub" style="margin-top:0;">매일 꼭 오는 필수 알림이에요 — 시간만 조절할 수 있어요.</div>';
+    var wt = parseHM(state.settings.routine.wakeTime);
+    body += '<div class="settings-row"><div><div class="t">기상 알림 + 컨디션 체크</div>' +
+      '<div class="d">기상 시간에 알림으로 오늘 컨디션을 확인하고, 가벼운 스트레칭과 함께 오늘 일정을 바로 브리핑해줘요.</div></div></div>';
+    body += '<div class="routine-expand"><div class="stepper-row">'+stepperHtml('기상 시간', meridiemTimeLabel(wt.hour,wt.minute), "appAction('routineTimeStep','wake',-30)", "appAction('routineTimeStep','wake',30)")+'</div>';
+    body += '<button class="btn btn-secondary" onclick="appAction(\'previewWakeRoutine\')">지금 미리보기</button></div>';
+
+    var st = parseHM(state.settings.routine.sleepTime);
+    body += '<div class="settings-row"><div><div class="t">취침 알림 + 내일 일정 미리보기</div>' +
+      '<div class="d">취침 시간에 알림으로 내일 일정을 미리 알려줘요.</div></div></div>';
+    body += '<div class="routine-expand"><div class="stepper-row">'+stepperHtml('취침 시간', meridiemTimeLabel(st.hour,st.minute), "appAction('routineTimeStep','sleep',-30)", "appAction('routineTimeStep','sleep',30)")+'</div>';
+    body += '<button class="btn btn-secondary" onclick="appAction(\'previewSleepRoutine\')">지금 미리보기</button></div>';
+
+    body += '<div class="section-sub" style="margin-top:8px;">이 화면은 프로토타입이라 실제 알림 대신, 화면 위 알림 배너로 미리보기만 보여드려요. 알림을 무음/진동/소리 중 어떻게 줄지는 설정 → 알림에서 바꿀 수 있어요.</div>';
+    body += '<button class="btn btn-ghost" style="margin-top:14px;" onclick="appAction(\'closeRoutineModal\')">닫기</button>';
+    return '<div class="overlay" onclick="appAction(\'closeRoutineModal\')"><div class="sheet" onclick="event.stopPropagation()">' +
+      '<div class="sheet-title">기상 · 취침 일정 설정</div>'+body+'</div></div>';
   }
   function toggleTrack(on, onclick){
     return '<button class="toggle-track'+(on?' on':'')+'" onclick="'+onclick+'"><div class="toggle-thumb"></div></button>';
@@ -2941,6 +2977,8 @@
       case 'closeSettingsSection': ui.settingsSection = null; break;
       case 'openInterventionExample': ui.interventionExampleOpen = true; break;
       case 'closeInterventionExample': ui.interventionExampleOpen = false; break;
+      case 'openRoutineModal': ui.routineModalOpen = true; break;
+      case 'closeRoutineModal': ui.routineModalOpen = false; break;
       case 'setAiServerUrl': state.settings.aiServer.url = args[0]; ui.aiServerStatus = null; return;
       case 'setAiServerSecret': state.settings.aiServer.secret = args[0]; ui.aiServerStatus = null; return;
       case 'testAiServer': testAiServerConnection(); return;
@@ -2980,7 +3018,7 @@
         ui.onboardingStep = Math.min(2, ui.onboardingStep+1);
         break;
       }
-      case 'onboardingFinishWithDemo': ui.onboardingDone = true; ui.onboardingStep = 0; break;
+      case 'onboardingFinishWithDemo': seedDemoData(); ui.onboardingDone = true; ui.onboardingStep = 0; break;
       case 'onboardingConnectCalendar': {
         // 실제 기기라면 여기서 Google 계정 연동(OAuth) 화면이 열려요. 프로토타입이라 실제
         // 연동은 안 되니, 연동됐다고 가정하고 자동 동기화를 켠 채로 빈 상태에서 시작해요
@@ -3237,7 +3275,7 @@
   setInterval(function(){
     checkReminders();
     syncOngoingNextUpNotification();
-    if(!ui.sheet && !ui.overlap && !ui.energy && !ui.checkin && !ui.quickAdd && !ui.form && !ui.interventionExampleOpen) render();
+    if(!ui.sheet && !ui.overlap && !ui.energy && !ui.checkin && !ui.quickAdd && !ui.form && !ui.interventionExampleOpen && !ui.routineModalOpen) render();
   }, 60000);
   checkReminders();
   setupNativeNotifications();
