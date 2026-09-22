@@ -343,6 +343,7 @@
   .chat-msgs{flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding:4px 2px 12px; max-height:44vh;}
   .chat-bubble{max-width:82%; padding:10px 13px; border-radius:16px; font-size:13.5px; line-height:1.5;}
   .chat-bubble.bot{align-self:flex-start; background:var(--chip-bg); color:var(--text); border-bottom-left-radius:4px;}
+  .chat-bubble.bot.thinking{color:var(--text-faint); font-style:italic;}
   .chat-bubble.user{align-self:flex-end; background:var(--accent); color:var(--accent-text); border-bottom-right-radius:4px;}
   .chat-proposal{align-self:flex-start; max-width:90%; background:var(--surface-2); border:1px solid var(--border);
     border-radius:14px; padding:12px;}
@@ -496,7 +497,10 @@
       // 기상했을 때 알람+스트레칭 유도+오늘 브리핑, 취침 시 내일 일정 미리보기 — 둘 다 기본은 꺼둔
       // 선택 기능이에요(예전 리뷰에서 "운동 전용처럼 보이는 강제 미션"은 빼기로 했던 것과는 달리,
       // 이건 특정 운동을 강요하지 않는 일반적인 아침/저녁 루틴 알림이라 이 앱의 정체성과 어울려요).
-      routine:{ wakeEnabled:false, wakeTime:'07:00', sleepEnabled:false, sleepTime:'23:00' }
+      routine:{ wakeEnabled:false, wakeTime:'07:00', sleepEnabled:false, sleepTime:'23:00' },
+      // 채팅이 규칙 기반 대신 실제 LLM과 대화하게 하려면 여기에 배포된 서버 주소를 넣어요
+      // (repo의 server/ 폴더 + server/README.md 참고). 비워두면 지금처럼 규칙 기반으로 동작해요.
+      aiServer:{ url:'', secret:'' }
     }
   };
 
@@ -536,6 +540,7 @@
     energy:null,
     checkin:null, insightDismissedIds:{},
     goalEditOpen:false, goalDraft:'',
+    aiServerStatus:null,
     onboardingDone:false, onboardingStep:0,
     chatOpen:false, chat:null,
     historyMonthOffset:0, historySelectedDate:null,
@@ -628,15 +633,16 @@
     var totalMinutes = rows.reduce(function(s,r){ return s+r.duration; }, 0);
     // 남은 일정 기준으로만 문구를 만들어요 (전체 개수/시간이 섞이면 앞뒤가 안 맞는 문구가 돼요).
     var remainingMinutes = remaining.reduce(function(s,r){ return s+r.duration; }, 0);
-    // 체크인에서 "컨디션 안 좋음"이라고 답했으면, 일정 개수·시간이 평소만큼이어도 오늘은
-    // 재계획을 먼저 제안해요 — 규칙(개수·시간)만이 아니라 실제 상태를 반영하기 위해서예요.
+    // "빠듯하다"는 비서가 개수·시간을 보고 판단할 일이 아니라 사용자가 직접 알려줄 일이에요
+    // (컨디션 체크의 "버거워요"나 "컨디션 안 좋음"). 비서는 사실(개수·시간)만 전달하고,
+    // 그 판단이 들어온 뒤에만 재계획을 먼저 제안해요. 겹침만은 예외 — 시간 충돌은 판단이
+    // 아니라 사실이라 바로 알려드려요.
     var checkin = state.checkins[dateKey];
-    var busy = rows.length >= 5 || totalMinutes >= 360 || overlapCount > 0 || (checkin && checkin.condition==='low');
+    var busy = overlapCount > 0 || (checkin && (checkin.burden==='heavy' || checkin.condition==='low'));
     var headline;
     if(rows.length === 0) headline = '오늘 등록된 일정이 없어요. 새 일정을 추가하거나 편하게 쉬어도 좋아요.';
     else if(remaining.length === 0) headline = '오늘 남은 일정이 없어요. 수고 많으셨어요.';
-    else if(busy) headline = '남은 일정은 '+remaining.length+'개, 총 '+formatDurationHM(remainingMinutes)+' 분량이에요. 조금 빠듯할 수 있어요.';
-    else headline = '오늘 남은 일정은 '+remaining.length+'개예요. 편안하게 진행해보세요.';
+    else headline = '남은 일정은 '+remaining.length+'개, 총 '+formatDurationHM(remainingMinutes)+' 분량이에요.';
     var note = overlapCount > 0 ? ('겹치는 일정이 '+overlapCount+'건 있어요. 시간을 조정하면 좋을 것 같아요.') : null;
     return { totalCount: rows.length, remainingCount: remaining.length, overlapCount:overlapCount, totalMinutes:totalMinutes, remainingMinutes:remainingMinutes, headline:headline, note:note, busy:busy };
   }
@@ -891,7 +897,6 @@
     no_longer_needed:'더 이상 필요 없어요', custom:'직접 입력' };
   // 오늘 컨디션 체크인 옵션 — 하루 1~2번, 대부분 선택만 하면 되는 가벼운 항목들이에요.
   var CONDITION_OPTIONS = [['low','컨디션 안 좋음'],['mid','컨디션 보통'],['high','컨디션 좋음']];
-  var CONDITION_LABEL = { low:'컨디션 안 좋음', mid:'컨디션 보통', high:'컨디션 좋음' };
   var BURDEN_OPTIONS = [['light','가벼워요'],['normal','보통이에요'],['heavy','버거워요']];
   var AVAILABLE_MIN_PRESETS = [30,60,120,180];
 
@@ -1022,9 +1027,12 @@
     c.messages.forEach(function(m){
       if(m.role==='user') msgsHtml += '<div class="chat-bubble user">'+esc(m.text)+'</div>';
       else {
-        msgsHtml += '<div class="chat-bubble bot">'+escMultiline(m.text)+'</div>';
+        msgsHtml += '<div class="chat-bubble bot'+(m.thinking?' thinking':'')+'">'+escMultiline(m.text)+'</div>';
         if(m.proposal) msgsHtml += renderChatProposal(m.proposal, m.id);
         if(m.quickAction) msgsHtml += '<button class="btn btn-secondary" style="margin:4px 0 8px;" onclick="appAction(\''+m.quickAction.action+'\')">'+esc(m.quickAction.label)+'</button>';
+        if(m.serverAction) msgsHtml += '<div style="margin:4px 0 8px; display:flex; gap:8px;">' +
+          btn('적용하기', 'primary', "appAction('serverActionConfirm','"+m.id+"')") +
+          btn('아니에요', 'ghost', "appAction('serverActionDismiss','"+m.id+"')") + '</div>';
       }
     });
     var body = '<div class="chat-msgs" id="chat-msgs-el">'+msgsHtml+'</div>';
@@ -1326,13 +1334,113 @@
     // 12) 그 외 일반 질문 — 데모 범위 밖이라 정중히 안내해요
     return { text: '아직 그 질문은 잘 이해하지 못했어요. "오늘 남은 일정 알려줘"나 "병원 3시"처럼 일정 조회·추가로 물어봐줄래요?' };
   }
+  // AI 서버(예: server/index.js를 배포한 주소)가 설정돼 있으면 실제 LLM에게 물어보고,
+  // 아니거나 실패하면 기존 규칙 기반 해석(handleChatText)으로 조용히 되돌아가요 — 오프라인/
+  // 미설정 상태에서도 기본 기능은 계속 동작해야 해서예요.
   function sendChatText(text){
     text = text.trim();
     if(!text) return;
     ui.chat.messages.push({id:uid('m'), role:'user', text:text});
     ui.chat.draftText = '';
-    var result = handleChatText(text);
-    ui.chat.messages.push({id:uid('m'), role:'bot', text:result.text, proposal:result.proposal||null, quickAction:result.quickAction||null});
+    var serverUrl = (state.settings.aiServer.url||'').trim();
+    if(!serverUrl){
+      var result = handleChatText(text);
+      ui.chat.messages.push({id:uid('m'), role:'bot', text:result.text, proposal:result.proposal||null, quickAction:result.quickAction||null});
+      return;
+    }
+    var thinkingId = uid('m');
+    ui.chat.messages.push({id:thinkingId, role:'bot', text:'생각하고 있어요…', thinking:true});
+    callAiServer(serverUrl, text).then(function(serverResult){
+      var msg = ui.chat.messages.find(function(m){ return m.id===thinkingId; });
+      if(!msg) return; // 응답 오는 사이 채팅이 닫히거나 초기화됐으면 조용히 무시해요
+      msg.thinking = false;
+      if(serverResult && serverResult.reply){
+        msg.text = serverResult.reply;
+        if(serverResult.requiresConfirmation && serverResult.action && serverResult.action!=='answer' && serverResult.action!=='unknown'){
+          msg.serverAction = serverResult;
+        }
+      } else {
+        // 서버가 없거나 응답 형식이 다르면(배포 안 됨, 네트워크 오류 등) 규칙 기반으로 대체해요.
+        var fallback = handleChatText(text);
+        msg.text = fallback.text;
+        msg.proposal = fallback.proposal || null;
+        msg.quickAction = fallback.quickAction || null;
+      }
+      render();
+    });
+  }
+  // server/index.js의 /api/parse에 오늘 시간표·반복 일정 목록을 함께 보내서, 서버(Claude)가
+  // "어떤 일정을 말하는지" 맞출 수 있게 해요. 네트워크 오류·CORS·타임아웃은 전부 null로
+  // 수렴시켜서 호출부가 항상 로컬 대체 경로를 탈 수 있게 해요.
+  function buildAiChatContext(){
+    var dateKey = todayKey(), now = new Date();
+    return {
+      today: dateKey,
+      now: formatHM(now.getHours(), now.getMinutes()),
+      todayTimetable: buildTimetableForDate(dateKey).map(function(r){
+        return { entryId:r.entryId, refId:r.refId, kind:r.kind, label:r.label, time:r.time, durationMinutes:r.duration, isFixed:r.isFixed };
+      }),
+      recurringEvents: state.events.filter(function(ev){ return !ev.paused; }).map(function(ev){
+        return { eventId:ev.id, label:ev.label, time:ev.time, days:ev.days, durationMinutes:ev.duration, isFixed:ev.isFixed };
+      })
+    };
+  }
+  function callAiServer(url, message){
+    var base = url.replace(/\/+$/,'');
+    var headers = {'Content-Type':'application/json'};
+    if(state.settings.aiServer.secret) headers['x-app-secret'] = state.settings.aiServer.secret;
+    return fetch(base+'/api/parse', {
+      method:'POST', headers:headers,
+      body: JSON.stringify({ message:message, context: buildAiChatContext() })
+    }).then(function(res){ return res.json(); }).catch(function(){ return null; });
+  }
+  // 서버가 돌려준 구조화된 명령을 실제 로컬 상태 변경으로 옮겨요 — 서버는 "무엇을 할지"만
+  // 판단하고, 실제 반영은 항상 여기서, 사용자가 "적용하기"를 눌러야만 일어나요.
+  function applyServerAction(a){
+    var dk = a.dateKey || todayKey();
+    switch(a.action){
+      case 'add_recurring_event':
+        addRecurringEvent({label:a.label||'새 반복 일정', time:a.time||'09:00',
+          days:(a.days&&a.days.length)?a.days:[weekdayOfKey(todayKey())], duration:a.durationMinutes||30,
+          isFixed:false, isTimeFixed:false, isWorkout:false, minVersion:null, memo:null});
+        break;
+      case 'add_adhoc_event':
+        addAdhocEntry({label:a.label||'새 일정', dateKey:dk, time:a.time||'09:00', duration:a.durationMinutes||30,
+          isFixed:false, isTimeFixed:false, minVersion:null, memo:null});
+        break;
+      case 'delete_event':
+        if(a.eventId) deleteRecurringEvent(a.eventId);
+        else if(a.entryId){ var r1 = findRow(a.entryId, dk); if(r1 && r1.kind==='adhoc') deleteAdhocEntry(r1.refId); }
+        break;
+      case 'reschedule_event':
+        if(a.eventId){
+          if(a.scope==='from_now_on') updateRecurringEvent(a.eventId, {time:a.newTime});
+          else setEventOccurrenceOverride(a.eventId, dk, {time:a.newTime});
+        } else if(a.entryId){
+          var r2 = findRow(a.entryId, dk); if(r2) updateAdhocEntry(r2.refId, {time:a.newTime});
+        }
+        break;
+      case 'change_duration':
+        if(a.eventId) setEventOccurrenceOverride(a.eventId, dk, {duration:a.durationMinutes});
+        else if(a.entryId){ var r3 = findRow(a.entryId, dk); if(r3) updateAdhocEntry(r3.refId, {duration:a.durationMinutes}); }
+        break;
+      case 'mark_entry_status':
+        if(a.entryId){ var r4 = findRow(a.entryId, dk); if(r4) setEntryStatus(r4.kind, r4.refId, dk, a.status); }
+        break;
+      default: break; // skip_next_week 등 이 프로토타입에 없는 동작은 답변만 보여주고 실행은 안 해요
+    }
+  }
+  function testAiServerConnection(){
+    var url = (state.settings.aiServer.url||'').trim().replace(/\/+$/,'');
+    if(!url){ ui.aiServerStatus = '서버 주소를 먼저 입력해주세요.'; render(); return; }
+    ui.aiServerStatus = '연결 확인 중…'; render();
+    fetch(url+'/health').then(function(res){ return res.json(); }).then(function(data){
+      ui.aiServerStatus = (data && data.ok) ? ('✅ 연결됐어요 (모델: '+(data.model||'?')+')') : '연결에 실패했어요.';
+      render();
+    }).catch(function(){
+      ui.aiServerStatus = '연결에 실패했어요. 주소와 서버 상태를 확인해주세요.';
+      render();
+    });
   }
 
   // ── 타임 롤링 피커 (업다운 스테퍼 대신 iOS 스타일로 스크롤해서 고르는 방식) ──
@@ -1542,19 +1650,8 @@
       }
       html += '<div class="greet-mascot-col"><div class="greet-bubble">'+esc(briefing.headline)+'</div>'+mascotSvg(48)+'</div>' +
         '</div>';
-      var todayCheckin = state.checkins[dateKey];
-      if(todayCheckin){
-        var checkinSummary = CONDITION_LABEL[todayCheckin.condition] +
-          (todayCheckin.availableMinutes ? ' · 가능 시간 '+formatDurationHM(todayCheckin.availableMinutes) : '') +
-          (todayCheckin.mustDoLabel ? ' · 꼭 할 일: '+esc(todayCheckin.mustDoLabel) : '');
-        html += '<div class="next-up-bar" style="cursor:pointer;" onclick="appAction(\'openCheckin\')"><span class="dot"></span>'+checkinSummary+' · 다시 체크하기</div>';
-      } else {
-        html += '<div class="section-sub" style="margin-top:-2px;">오늘 컨디션을 알려주시면 제안을 더 정확히 맞춰드려요.</div>';
-        html += '<div class="preset-row" style="margin-bottom:10px;">';
-        CONDITION_OPTIONS.forEach(function(o){ html += chip(o[1], false, "appAction('checkinQuickCondition','"+o[0]+"')", true); });
-        html += chip('자세히 입력', false, "appAction('openCheckin')", true);
-        html += '</div>';
-      }
+      // v43: 컨디션 체크는 더 이상 오늘 탭에 따로 자리를 차지하지 않아요 — 기상 알림을 누르면
+      // 그 흐름 안에서 한 번에 물어봐요(설정 → 기상 알림). 여기서 매번 노출하지 않아요.
     }
 
     if(needsResult.length>0){
@@ -1821,7 +1918,8 @@
   function buildAdjustReason(dateKey, briefing, checkin, changeCount, totalReducedMinutes){
     var parts = [];
     if(checkin && checkin.condition==='low') parts.push('오늘 컨디션이 안 좋다고 하셨고');
-    else if(briefing.busy) parts.push('오늘 남은 일정이 '+briefing.remainingCount+'개, 총 '+formatDurationHM(briefing.remainingMinutes)+'라 빠듯해서');
+    else if(checkin && checkin.burden==='heavy') parts.push('오늘 많이 버겁다고 하셨고');
+    else if(briefing.overlapCount>0) parts.push('겹치는 일정이 있어서');
     var insight = computeRecurringInsight();
     if(insight) parts.push('"'+esc(insight.event.label)+'"을 최근 자주 못 지켰던 것도 고려해서');
     return (parts.length ? parts.join(', ') : '오늘 상황을 고려해서') +
@@ -2354,6 +2452,15 @@
     html += '<div class="section-title">나의 목표</div><div class="section-sub">장기 목표를 한 줄로 적어두면, 오늘 탭 상단에 크게 보여드려요. 오늘 탭에서 바로 눌러 적을 수도 있어요.</div>';
     html += '<input class="textfield" value="'+esc(state.settings.myGoal||'')+'" placeholder="예: 토익 850점" oninput="appAction(\'setMyGoal\',this.value)"/>';
 
+    html += '<div class="section-title">비서에게 자연어로 말하기 (실험적)</div><div class="section-sub">' +
+      '서버를 연결하면 채팅에서 자유로운 문장을 실제 LLM이 이해해요. 비워두면 지금처럼 규칙 기반으로 동작해요 (server/README.md 참고).</div>';
+    html += '<div class="field-label" style="margin-top:0;">AI 서버 주소</div>' +
+      '<input class="textfield" value="'+esc(state.settings.aiServer.url)+'" placeholder="https://godsaeng-assistant.onrender.com" oninput="appAction(\'setAiServerUrl\',this.value)"/>';
+    html += '<div class="field-label">서버 비밀키</div>' +
+      '<input class="textfield" type="password" value="'+esc(state.settings.aiServer.secret)+'" placeholder="APP_SHARED_SECRET" oninput="appAction(\'setAiServerSecret\',this.value)"/>';
+    html += btn('연결 테스트', 'secondary', "appAction('testAiServer')");
+    if(ui.aiServerStatus) html += '<div class="section-sub" style="margin-top:6px;">'+esc(ui.aiServerStatus)+'</div>';
+
     html += '<div class="section-title">외부 캘린더</div><div class="section-sub">일정을 두 번 입력하지 않아도 되게, 외부 일정을 가져와 고정 일정으로 표시할 예정이에요. 지금은 프로토타입이라 미리보기만 가능해요.</div>';
     html += '<div class="settings-row"><div><div class="t">Google 캘린더 가져오기</div><div class="d">캘린더에 있는 일정을 그대로 불러와요.</div></div>' +
       '<button class="btn btn-secondary" style="width:auto; padding:8px 14px; margin-bottom:0;" onclick="appAction(\'externalCalendarStub\')">준비 중</button></div>';
@@ -2368,8 +2475,8 @@
 
     html += '<div class="section-title">아침 · 취침 루틴</div>';
     var wt = parseHM(state.settings.routine.wakeTime);
-    html += '<div class="settings-row"><div><div class="t">기상 알림 + 스트레칭 안내</div>' +
-      '<div class="d">기상 시간에 알림과 함께 가벼운 스트레칭을 유도하고, 오늘 일정을 바로 브리핑해줘요.</div></div>' +
+    html += '<div class="settings-row"><div><div class="t">기상 알림 + 컨디션 체크</div>' +
+      '<div class="d">기상 시간에 알림으로 오늘 컨디션을 확인하고, 가벼운 스트레칭과 함께 오늘 일정을 바로 브리핑해줘요.</div></div>' +
       toggleTrack(state.settings.routine.wakeEnabled, "appAction('toggleRoutine','wakeEnabled')")+'</div>';
     if(state.settings.routine.wakeEnabled){
       html += '<div class="routine-expand"><div class="stepper-row">'+stepperHtml('기상 시간', meridiemTimeLabel(wt.hour,wt.minute), "appAction('routineTimeStep','wake',-30)", "appAction('routineTimeStep','wake',30)")+'</div>';
@@ -2520,12 +2627,7 @@
         ui.goalEditOpen = false; break;
       }
 
-      // ── 오늘 컨디션 체크인 ──
-      case 'checkinQuickCondition': {
-        var dkQ = todayKey();
-        state.checkins[dkQ] = Object.assign({}, state.checkins[dkQ], {condition: args[0], at: new Date().toISOString()});
-        break;
-      }
+      // ── 오늘 컨디션 체크인 (기상 알림을 통해서만 들어와요) ──
       case 'openCheckin': {
         var dkO = todayKey();
         var prevC = state.checkins[dkO] || {};
@@ -2628,8 +2730,17 @@
       }
 
       case 'openNotif': {
+        var wasWakeNotif = ui.notif && ui.notif.kind==='wake';
         ui.tab = 'today';
         ui.notif = null;
+        if(wasWakeNotif){
+          // 기상 알림을 누르면 그 흐름 그대로 컨디션 체크로 이어져요 — 컨디션 체크가 오늘 탭에
+          // 따로 자리를 차지하지 않고, 기상 시점 한 번에 자연스럽게 물어보도록 합친 거예요.
+          var dkW = todayKey();
+          var prevW = state.checkins[dkW] || {};
+          ui.checkin = { condition: prevW.condition || 'mid', availableMinutes: prevW.availableMinutes || null,
+            mustDoId: prevW.mustDoId || null, burden: prevW.burden || null };
+        }
         break;
       }
 
@@ -2637,6 +2748,9 @@
       case 'setPrimaryGoal': state.settings.primaryGoal = args[0]; break;
       case 'setMyGoal': state.settings.myGoal = args[0].trim() || null; return;
       case 'externalCalendarStub': showInfoToast('실제 앱에서 연동할 예정이에요. 지금은 프로토타입이라 미리보기만 가능해요.'); return;
+      case 'setAiServerUrl': state.settings.aiServer.url = args[0]; ui.aiServerStatus = null; return;
+      case 'setAiServerSecret': state.settings.aiServer.secret = args[0]; ui.aiServerStatus = null; return;
+      case 'testAiServer': testAiServerConnection(); return;
       case 'toggleRoutine': state.settings.routine[args[0]] = !state.settings.routine[args[0]]; break;
       case 'routineTimeStep': {
         var rkey = args[0]==='wake' ? 'wakeTime' : 'sleepTime';
@@ -2649,7 +2763,8 @@
         // 알림 문구에 오늘 브리핑 헤드라인을 그대로 이어붙이면, 알림을 눌러 들어간 오늘 탭의
         // 인사 카드 말풍선에 같은 문장이 또 나와서 겹쳐 보였어요. 알림은 짧은 기상 멘트만,
         // 자세한 오늘 일정 요약은 오늘 탭의 인사 카드에서 한 번만 보여주도록 분리했어요.
-        ui.notif = { title:'⏰ 기상 알림', body:'좋은 아침이에요! 가볍게 스트레칭부터 해볼까요? 오늘 일정은 눌러서 확인해보세요.', entryId:null, dateKey:null };
+        // v43: 컨디션 체크를 여기로 합쳤어요 — 눌러서 들어가면 바로 컨디션 체크 시트가 떠요.
+        ui.notif = { title:'⏰ 기상 알림', body:'좋은 아침이에요! 눌러서 오늘 컨디션을 확인하고, 가볍게 스트레칭부터 해볼까요?', kind:'wake', entryId:null, dateKey:null };
         break;
       }
       case 'previewSleepRoutine': {
@@ -2744,6 +2859,21 @@
         var dmsg = ui.chat.messages.find(function(m){ return m.id===args[0]; });
         if(dmsg) dmsg.proposal = null;
         ui.chat.messages.push({id:uid('m'), role:'bot', text:'네, 취소할게요.'});
+        break;
+      }
+      case 'serverActionConfirm': {
+        var smsg = ui.chat.messages.find(function(m){ return m.id===args[0]; });
+        if(smsg && smsg.serverAction){
+          applyServerAction(smsg.serverAction);
+          smsg.serverAction = null;
+          ui.chat.messages.push({id:uid('m'), role:'bot', text:'반영했어요! 다른 것도 말해줘요.'});
+        }
+        break;
+      }
+      case 'serverActionDismiss': {
+        var smsg2 = ui.chat.messages.find(function(m){ return m.id===args[0]; });
+        if(smsg2) smsg2.serverAction = null;
+        ui.chat.messages.push({id:uid('m'), role:'bot', text:'네, 반영하지 않을게요.'});
         break;
       }
 
