@@ -292,13 +292,16 @@
      브랜드 그린 한 가지(후)로 바꾸고 배지도 가운데로 옮겼어요. */
   .tl-compare{display:flex; gap:12px; margin-top:6px;}
   .tl-col{flex:1; min-width:0; text-align:center;}
-  .tl-col-badge{display:inline-flex; padding:4px 10px; border-radius:999px; font-size:10px; font-weight:800; margin-bottom:10px;}
-  .tl-col-badge.before{background:var(--chip-bg); color:var(--text-muted);}
-  .tl-col-badge.after{background:var(--accent-soft); color:var(--accent);}
+  .tl-col-badge{display:inline-flex; padding:5px 12px; border-radius:999px; font-size:11px; font-weight:800; margin-bottom:10px;}
+  .tl-col-badge.before{background:var(--chip-bg); color:var(--text-muted); border:1px solid var(--border);}
+  .tl-col-badge.after{background:var(--accent-soft); color:var(--accent); border:1px solid var(--accent);}
   .tl-track{position:relative;}
-  .tl-hour{position:absolute; left:0; top:0; font-size:10.5px; color:var(--text-faint); transform:translateY(-5px); width:32px; text-align:right;}
-  .tl-block{position:absolute; left:36px; right:2px; border-radius:6px; padding:3px 7px; font-size:11px;
-    font-weight:800; color:#fff; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; line-height:1.8;}
+  .tl-gridline{position:absolute; left:34px; right:0; height:1px; background:var(--border);}
+  .tl-hour{position:absolute; left:0; top:0; font-size:10.5px; font-weight:700; color:var(--text-faint); transform:translateY(-5px); width:30px; text-align:right;}
+  .tl-block{position:absolute; left:36px; right:2px; border-radius:8px; padding:4px 8px; font-size:11.5px;
+    font-weight:800; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; line-height:1.8; border:1.5px solid transparent;}
+  .tl-block.skip{background:none!important; border:1.5px dashed var(--text-faint)!important; color:var(--text-faint)!important;
+    font-weight:700; display:flex; align-items:center; justify-content:center; white-space:normal; text-align:center; line-height:1.3;}
 
   /* ── 기상·취침 루틴 펼침 영역: 토글 바로 아래 촘촘하게 붙어 답답해 보이던 걸, 카드로 묶고
      여백을 넉넉히 줘서 눈에 편하게 했어요. ── */
@@ -539,7 +542,14 @@
       // 기상·취침 루틴은 선택이 아니라 항상 켜져 있는 필수 알림이에요 — 시간만 조절할 수 있어요
       // (예전 리뷰에서 "운동 전용처럼 보이는 강제 미션"은 빼기로 했던 것과는 별개로, 이건 특정
       // 운동을 강요하지 않는 일반적인 아침/저녁 루틴 알림이라 이 앱의 정체성과 어울려요).
-      routine:{ wakeTime:'07:00', sleepTime:'23:00' },
+      // perWeekday가 꺼져 있으면 매일 같은 시간(7칸이 전부 같은 값)이고, 켜면 요일별로
+      // 다르게 설정할 수 있어요(주말엔 더 늦게 일어나고 싶은 경우 등). 키는 Date.getDay()와
+      // 같은 요일 인덱스(0=일 ~ 6=토)예요.
+      routine:{
+        perWeekday:false,
+        wakeTimes:{0:'07:00',1:'07:00',2:'07:00',3:'07:00',4:'07:00',5:'07:00',6:'07:00'},
+        sleepTimes:{0:'23:00',1:'23:00',2:'23:00',3:'23:00',4:'23:00',5:'23:00',6:'23:00'}
+      },
       // 채팅이 규칙 기반 대신 실제 LLM과 대화하게 하려면 여기에 배포된 서버 주소를 넣어요
       // (repo의 server/ 폴더 + server/README.md 참고). 비워두면 지금처럼 규칙 기반으로 동작해요.
       aiServer:{ url:'', secret:'' },
@@ -599,7 +609,7 @@
     checkin:null, insightDismissedIds:{},
     goalEditOpen:false, goalDraft:'',
     aiServerStatus:null,
-    settingsSection:null, interventionExampleOpen:false, routineModalOpen:false,
+    settingsSection:null, interventionExampleOpen:false, routineModalOpen:false, routineEditDay:weekdayOfKey(TK),
     onboardingDone:false, onboardingStep:0,
     chatOpen:false, chat:null,
     historyMonthOffset:0, historySelectedDate:null,
@@ -694,10 +704,11 @@
     var remainingMinutes = remaining.reduce(function(s,r){ return s+r.duration; }, 0);
     // "빠듯하다"는 비서가 개수·시간을 보고 판단할 일이 아니라 사용자가 직접 알려줄 일이에요
     // (컨디션 체크의 "버거워요"나 "컨디션 안 좋음"). 비서는 사실(개수·시간)만 전달하고,
-    // 그 판단이 들어온 뒤에만 재계획을 먼저 제안해요. 겹침만은 예외 — 시간 충돌은 판단이
-    // 아니라 사실이라 바로 알려드려요.
+    // 그 판단이 들어온 뒤에만 재계획을 먼저 제안해요. 겹침은 여기 섞지 않아요 — 오늘 탭에
+    // "겹침 해결하기" 카드로 이미 따로 안내하고 처리해서, 컨디션 조정(피곤해요) 쪽 사유에
+    // 또 등장하면 "이미 처리한 걸 왜 또 얘기하지" 싶은 혼란을 줘요.
     var checkin = state.checkins[dateKey];
-    var busy = overlapCount > 0 || (checkin && (checkin.burden==='heavy' || checkin.condition==='low'));
+    var busy = !!(checkin && (checkin.burden==='heavy' || checkin.condition==='low'));
     var headline;
     if(rows.length === 0) headline = '오늘 등록된 일정이 없어요. 새 일정을 추가하거나 편하게 쉬어도 좋아요.';
     else if(remaining.length === 0) headline = '오늘 남은 일정이 없어요. 수고 많으셨어요.';
@@ -785,7 +796,9 @@
     });
     s.withoutMinVersion.forEach(function(item){
       before.push({refId:item.refId, label:item.label, time:item.time, duration:item.duration, changed:true, past:false});
-      // 건너뛰는 일정은 after 쪽엔 아예 안 넣어요 — 오늘 제외됐다는 게 목록에서 빠지는 것으로 드러나요.
+      // 건너뛰는 일정은 after 쪽을 아예 비워두면 "왜 아무것도 없지" 싶어 보여서, 같은 시간·
+      // 길이 자리에 "오늘은 건너뛰어요" 점선 블록을 대신 넣어요.
+      after.push({refId:item.refId, label:'오늘은 건너뛰어요', time:item.time, duration:item.duration, changed:true, past:false, skip:true});
     });
     return { before: before, after: after };
   }
@@ -806,20 +819,26 @@
     // 뭐가 바뀌는지 눈에 안 들어온다는 피드백이 있었어요. 이제는 "실제로 바뀌는 항목"만
     // 색을 주고(전/후가 서로 다른 색), 안 바뀌는 항목·이미 지난 항목은 전부 회색이에요.
     function blockColor(it, side){
-      if(it.past || !it.changed) return { bg:'var(--chip-bg)', fg:'var(--text-muted)' };
-      return side==='before' ? { bg:'var(--chip-bg)', fg:'var(--text)' } : { bg:'var(--accent-soft)', fg:'var(--accent)' };
+      if(it.past || !it.changed) return { bg:'var(--chip-bg)', fg:'var(--text-muted)', border:'var(--border)' };
+      return side==='before' ? { bg:'var(--chip-bg)', fg:'var(--text)', border:'var(--text-faint)' }
+                              : { bg:'var(--accent-soft)', fg:'var(--accent)', border:'var(--accent)' };
     }
     function col(items, side){
       var h = '<div class="tl-track" style="height:'+trackHeight+'px;">';
       for(var i=0;i<=totalHours;i++){
+        h += '<div class="tl-gridline" style="top:'+(i*HOUR_PX)+'px;"></div>';
         h += '<div class="tl-hour" style="top:'+(i*HOUR_PX)+'px;">'+pad2(Math.floor(rangeStart/60+i)%24)+':00</div>';
       }
       items.forEach(function(it){
         var hm = parseHM(it.time);
         var top = ((hm.hour*60+hm.minute-rangeStart)/60)*HOUR_PX;
         var height = Math.max(20, (it.duration/60)*HOUR_PX - 3);
+        if(it.skip){
+          h += '<div class="tl-block skip" style="top:'+top+'px; height:'+height+'px;">'+esc(it.label)+'</div>';
+          return;
+        }
         var c = blockColor(it, side);
-        h += '<div class="tl-block" style="top:'+top+'px; height:'+height+'px; background:'+c.bg+'; color:'+c.fg+';">'+esc(it.label)+'</div>';
+        h += '<div class="tl-block" style="top:'+top+'px; height:'+height+'px; background:'+c.bg+'; color:'+c.fg+'; border-color:'+c.border+';">'+esc(it.label)+'</div>';
       });
       h += '</div>';
       return h;
@@ -1966,7 +1985,7 @@
 
   // ── 시작 전 알림 (몇 분 전에 알려줄지) ──
   // 반복 일정은 이 값을 한 번 정해두면 매 회차마다 계속 쓰이고(일정 자체에 저장),
-  // 하루짜리 일정은 추가할 때(빠른 추가·새 일정 폼) 그때그때 골라요.
+  // 일회성 일정은 추가할 때(빠른 추가·새 일정 폼) 그때그때 골라요.
   var REMINDER_PRESETS = [0,5,10,30,60];
   function reminderLabel(m){
     if(!m) return '알림 없음';
@@ -2028,11 +2047,10 @@
         s.withMinVersion.forEach(function(item){ totalReduced += Math.max(0, item.duration - item.miniDuration); });
         s.withoutMinVersion.forEach(function(item){ totalReduced += item.duration; });
 
-        var reasonBriefing = computeBriefing(dateKey, new Date());
         var reasonCheckin = state.checkins[dateKey];
         // v42: 이유 문장 + 아래 전/후 타임라인이면 충분히 설명돼서, 같은 내용을 또 글로
         // 나열하던 목록(change-summary)은 중복이라 뺐어요.
-        body += '<div class="sheet-sub" style="margin-top:0;">'+buildAdjustReason(dateKey, reasonBriefing, reasonCheckin, changeLines.length, totalReduced)+'</div>';
+        body += '<div class="sheet-sub" style="margin-top:0;">'+buildAdjustReason(dateKey, reasonCheckin, changeLines.length, totalReduced)+'</div>';
         body += '<div class="compare-total">예상 부담 '+formatDurationHM(totalReduced)+' 감소 · 나머지 일정은 그대로 유지돼요</div>';
 
         // "전체 시간표로 비교하기"(하루 24시간 다 펼치는 버전)가 대부분 회색인 빈 시간대만
@@ -2073,11 +2091,10 @@
   // 자동조정이 왜 이렇게 제안됐는지 한 줄로 설명해요 — 근거 없이 "줄일게요"만 보여주면
   // 신뢰하기 어렵다는 피드백을 반영했어요. 오늘 체크인(컨디션)·브리핑(개수·시간)·최근 실패
   // 패턴 중 있는 근거를 골라 조합해요.
-  function buildAdjustReason(dateKey, briefing, checkin, changeCount, totalReducedMinutes){
+  function buildAdjustReason(dateKey, checkin, changeCount, totalReducedMinutes){
     var parts = [];
     if(checkin && checkin.condition==='low') parts.push('오늘 컨디션이 안 좋다고 하셨고');
     else if(checkin && checkin.burden==='heavy') parts.push('오늘 많이 버겁다고 하셨고');
-    else if(briefing.overlapCount>0) parts.push('겹치는 일정이 있어서');
     var insight = computeRecurringInsight();
     if(insight) parts.push('"'+esc(insight.event.label)+'"을 최근 자주 못 지켰던 것도 고려해서');
     return (parts.length ? parts.join(', ') : '오늘 상황을 고려해서') +
@@ -2173,13 +2190,12 @@
     var totalCount = rowsLive.length;
     var pct = totalCount>0 ? Math.round(doneCount/totalCount*100) : 100;
     var streak = computeStreakDays();
-    var totalMinutes = rowsLive.reduce(function(s,r){ return s+r.duration; }, 0);
 
     ctx.textAlign = 'left';
     ctx.fillStyle = '#182420'; ctx.font = '800 26px sans-serif';
     ctx.fillText('🌱 갓생살자', 44, 58);
     ctx.fillStyle = '#5B665F'; ctx.font = '600 15px sans-serif';
-    ctx.fillText(formatKoreanDate(dateKey)+' · 갓생 '+streak+'일째', 44, 84);
+    ctx.fillText(formatKoreanDate(dateKey)+' · '+streak+'일차', 44, 84);
 
     // 히어로 숫자 — 오늘 갓생 달성률
     ctx.fillStyle = '#182420'; ctx.font = '800 118px sans-serif';
@@ -2187,9 +2203,10 @@
     ctx.fillStyle = '#5B665F'; ctx.font = '700 17px sans-serif';
     ctx.fillText('오늘 갓생 달성률', 46, 250);
 
-    // 통계 3칸 (완료 개수 · 며칠째 · 총 소요시간)
-    var stats = [ ['완료', doneCount+'/'+totalCount], ['며칠째', streak+'일'], ['총 시간', formatDurationHM(totalMinutes)] ];
-    var colW = W/3;
+    // 통계 2칸 (완료 개수 · 연속 일수) — 총 소요시간은 "하루를 얼마나 아득바득 채웠는지"를
+    // 자랑하는 느낌이라 빼고, 목표를 얼마나 꾸준히 이어가는지에 집중해요.
+    var stats = [ ['완료', doneCount+'/'+totalCount], ['연속', streak+'일'] ];
+    var colW = W/2;
     ctx.textAlign = 'center';
     stats.forEach(function(s,i){
       var cx = colW*i + colW/2;
@@ -2227,7 +2244,7 @@
     }
 
     ctx.font = '400 13px sans-serif'; ctx.fillStyle = '#8C968E';
-    ctx.fillText('#갓생살자 #갓생'+streak+'일째 #오늘의기록', 44, H-30);
+    ctx.fillText('#갓생살자 #갓생'+streak+'일차 #오늘의기록', 44, H-30);
   }
   function shareCardNow(){
     var canvas = document.getElementById('share-canvas');
@@ -2290,7 +2307,7 @@
 
   // ── 일정관리 ──
   function renderSchedule(){
-    var html = '<div class="daytoggle" style="padding-left:0;">'+chip('반복 일정', ui.scheduleTab==='recurring', "appAction('setScheduleTab','recurring')")+chip('하루짜리 일정', ui.scheduleTab==='adhoc', "appAction('setScheduleTab','adhoc')")+'</div>';
+    var html = '<div class="daytoggle" style="padding-left:0;">'+chip('반복 일정', ui.scheduleTab==='recurring', "appAction('setScheduleTab','recurring')")+chip('일회성 일정', ui.scheduleTab==='adhoc', "appAction('setScheduleTab','adhoc')")+'</div>';
     if(ui.scheduleTab==='recurring'){
       if(state.events.length===0) html += '<div class="empty">등록된 반복 일정이 없어요.</div>';
       else state.events.forEach(function(ev){
@@ -2304,7 +2321,7 @@
       });
     } else {
       var list = state.adhocEntries.slice().sort(function(a,b){ return (a.dateKey+a.time) < (b.dateKey+b.time) ? -1 : 1; });
-      if(list.length===0) html += '<div class="empty">등록된 하루짜리 일정이 없어요.</div>';
+      if(list.length===0) html += '<div class="empty">등록된 일회성 일정이 없어요.</div>';
       else list.forEach(function(en){
         var hm = parseHM(en.time);
         html += '<div class="item-card" onclick="appAction(\'openForm\',\'adhoc\',\''+en.id+'\')"><div style="flex:1;">' +
@@ -2320,7 +2337,7 @@
   function renderFormModal(){
     var f = ui.form, d = f.draft;
     var dirty = JSON.stringify(d) !== JSON.stringify(f.initial);
-    var body = '<div class="form-title">'+(f.editingId ? '일정 수정' : (f.kind==='session' ? '새 반복 일정' : '새 하루짜리 일정'))+'</div>';
+    var body = '<div class="form-title">'+(f.editingId ? '일정 수정' : (f.kind==='session' ? '새 반복 일정' : '새 일회성 일정'))+'</div>';
     body += '<div class="field-label" style="margin-top:0;">이름</div><input class="textfield" value="'+esc(d.label)+'" placeholder="예: 아침 운동" oninput="appAction(\'formField\',\'label\',this.value)"/>';
     if(f.kind==='session'){
       body += '<div class="field-label">반복 요일</div><div class="day-row">';
@@ -2695,15 +2712,30 @@
       '<div class="sheet-title">비서 성향별로 뭐가 달라지나요?</div>'+body+'</div></div>';
   }
   function renderRoutineModal(){
+    var r = state.settings.routine;
+    var day = ui.routineEditDay;
     var body = '<div class="section-sub" style="margin-top:0;">매일 꼭 오는 필수 알림이에요 — 시간만 조절할 수 있어요.</div>';
-    var wt = parseHM(state.settings.routine.wakeTime);
-    body += '<div class="settings-row"><div><div class="t">기상 알림 + 컨디션 체크</div>' +
+
+    body += '<div class="settings-row"><div><div class="t">요일마다 다르게 설정</div>' +
+      '<div class="d">꺼두면 매일 같은 시간이에요. 켜면 요일별로 다른 기상·취침 시간을 정할 수 있어요(주말엔 더 늦게 등).</div></div>' +
+      toggleTrack(r.perWeekday, "appAction('toggleRoutinePerWeekday')")+'</div>';
+
+    if(r.perWeekday){
+      body += '<div class="preset-row" style="justify-content:flex-start; margin-top:10px;">';
+      WEEKDAY_LABELS.forEach(function(lbl,d){
+        body += chip(lbl, day===d, "appAction('setRoutineEditDay',"+d+")");
+      });
+      body += '</div>';
+    }
+
+    var wt = parseHM(r.wakeTimes[day]);
+    body += '<div class="settings-row"><div><div class="t">기상 알림 + 컨디션 체크'+(r.perWeekday?' · '+WEEKDAY_LABELS[day]+'요일':'')+'</div>' +
       '<div class="d">기상 시간에 알림으로 오늘 컨디션을 확인하고, 가벼운 스트레칭과 함께 오늘 일정을 바로 브리핑해줘요.</div></div></div>';
     body += '<div class="routine-expand"><div class="stepper-row">'+stepperHtml('기상 시간', meridiemTimeLabel(wt.hour,wt.minute), "appAction('routineTimeStep','wake',-30)", "appAction('routineTimeStep','wake',30)")+'</div>';
     body += '<button class="btn btn-secondary" onclick="appAction(\'previewWakeRoutine\')">지금 미리보기</button></div>';
 
-    var st = parseHM(state.settings.routine.sleepTime);
-    body += '<div class="settings-row"><div><div class="t">취침 알림 + 내일 일정 미리보기</div>' +
+    var st = parseHM(r.sleepTimes[day]);
+    body += '<div class="settings-row"><div><div class="t">취침 알림 + 내일 일정 미리보기'+(r.perWeekday?' · '+WEEKDAY_LABELS[day]+'요일':'')+'</div>' +
       '<div class="d">취침 시간에 알림으로 내일 일정을 미리 알려줘요.</div></div></div>';
     body += '<div class="routine-expand"><div class="stepper-row">'+stepperHtml('취침 시간', meridiemTimeLabel(st.hour,st.minute), "appAction('routineTimeStep','sleep',-30)", "appAction('routineTimeStep','sleep',30)")+'</div>';
     body += '<button class="btn btn-secondary" onclick="appAction(\'previewSleepRoutine\')">지금 미리보기</button></div>';
@@ -2977,19 +3009,28 @@
       case 'closeSettingsSection': ui.settingsSection = null; break;
       case 'openInterventionExample': ui.interventionExampleOpen = true; break;
       case 'closeInterventionExample': ui.interventionExampleOpen = false; break;
-      case 'openRoutineModal': ui.routineModalOpen = true; break;
+      case 'openRoutineModal': ui.routineModalOpen = true; ui.routineEditDay = weekdayOfKey(todayKey()); break;
       case 'closeRoutineModal': ui.routineModalOpen = false; break;
       case 'setAiServerUrl': state.settings.aiServer.url = args[0]; ui.aiServerStatus = null; return;
       case 'setAiServerSecret': state.settings.aiServer.secret = args[0]; ui.aiServerStatus = null; return;
       case 'testAiServer': testAiServerConnection(); return;
       case 'setAlertStyle': state.settings.notify.alertStyle = args[0]; break;
       case 'routineTimeStep': {
-        var rkey = args[0]==='wake' ? 'wakeTime' : 'sleepTime';
-        var rhm = parseHM(state.settings.routine[rkey]);
+        var rkey = args[0]==='wake' ? 'wakeTimes' : 'sleepTimes';
+        var rday = ui.routineEditDay;
+        var rhm = parseHM(state.settings.routine[rkey][rday]);
         var rtotal = ((rhm.hour*60+rhm.minute+args[1]) % 1440 + 1440) % 1440;
-        state.settings.routine[rkey] = formatHM(Math.floor(rtotal/60), rtotal%60);
+        var rnewVal = formatHM(Math.floor(rtotal/60), rtotal%60);
+        if(state.settings.routine.perWeekday){
+          state.settings.routine[rkey][rday] = rnewVal;
+        } else {
+          // 요일마다 다르게 설정이 꺼져 있으면 7일 전부 같은 값으로 맞춰요.
+          for(var rwd=0; rwd<7; rwd++) state.settings.routine[rkey][rwd] = rnewVal;
+        }
         break;
       }
+      case 'toggleRoutinePerWeekday': state.settings.routine.perWeekday = !state.settings.routine.perWeekday; break;
+      case 'setRoutineEditDay': ui.routineEditDay = args[0]; break;
       case 'previewWakeRoutine': {
         // 알림 문구에 오늘 브리핑 헤드라인을 그대로 이어붙이면, 알림을 눌러 들어간 오늘 탭의
         // 인사 카드 말풍선에 같은 문장이 또 나와서 겹쳐 보였어요. 알림은 짧은 기상 멘트만,
