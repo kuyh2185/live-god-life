@@ -262,7 +262,8 @@
      그라데이션 CTA 버튼, 색상 블록 전/후 비교)을 오늘 탭에만 적용해요. 마스코트는 원본
      사진 캐릭터를 베끼지 않고, 이 앱의 새싹(🌱) 테마 + "머리띠 두르고 몰입하는" 컨셉으로 새로 그렸어요. */
   .greet-card{display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-top:14px;}
-  .greet-text .h1{font-size:19px; font-weight:800; line-height:1.3;}
+  .greet-text .h1{font-size:22px; font-weight:800; line-height:1.3;}
+  .greet-text .h1.placeholder{color:var(--text-faint); font-weight:700;}
   .greet-text .sub{font-size:12.5px; color:var(--text-muted); margin-top:3px;}
   .greet-mascot-col{display:flex; flex-direction:column; align-items:flex-end; gap:5px; flex-shrink:0;}
   .greet-bubble{background:var(--surface-2); border:1px solid var(--border); border-radius:14px 14px 4px 14px;
@@ -287,11 +288,13 @@
     display:flex; align-items:center; gap:4px; cursor:pointer; padding:7px 12px; border-radius:999px;}
 
   /* ── 피곤해요 전/후 비교: 시간대별 컬러 블록 타임라인 ── */
+  /* v42: 빨강/초록 대비가 이 앱의 "비난하지 않는" 톤과 안 맞는다는 피드백으로, 무채색(전) +
+     브랜드 그린 한 가지(후)로 바꾸고 배지도 가운데로 옮겼어요. */
   .tl-compare{display:flex; gap:12px; margin-top:6px;}
-  .tl-col{flex:1; min-width:0;}
+  .tl-col{flex:1; min-width:0; text-align:center;}
   .tl-col-badge{display:inline-flex; padding:4px 10px; border-radius:999px; font-size:10px; font-weight:800; margin-bottom:10px;}
-  .tl-col-badge.before{background:var(--danger-bg); color:var(--danger);}
-  .tl-col-badge.after{background:var(--success-bg); color:var(--success);}
+  .tl-col-badge.before{background:var(--chip-bg); color:var(--text-muted);}
+  .tl-col-badge.after{background:var(--accent-soft); color:var(--accent);}
   .tl-track{position:relative;}
   .tl-hour{position:absolute; left:0; top:0; font-size:10.5px; color:var(--text-faint); transform:translateY(-5px); width:32px; text-align:right;}
   .tl-block{position:absolute; left:36px; right:2px; border-radius:6px; padding:3px 7px; font-size:11px;
@@ -486,9 +489,10 @@
       checkinTiming:'after_end',
       voice:{ ttsEnabled:true, autoSpeak:false, rate:1 },
       primaryGoal:null,
-      // 장기 목표를 매번 잘게 쪼개진 않지만, 최소한 "이번 주엔 이거 하나"를 스스로 적어두면
-      // 오늘 무엇을 지킬지 판단 기준이 생겨요(목표 계층의 가장 가벼운 버전).
-      weeklyFocus:null,
+      // 장기 목표를 매번 잘게 쪼개진 않지만, 최소한 "나의 목표"를 한 줄로 적어두면
+      // 오늘 무엇을 지킬지 판단 기준이 생겨요(목표 계층의 가장 가벼운 버전). 오늘 탭의
+      // 인사 카드 자리에 크게 보여줘서, 열 때마다 자연스럽게 떠올리게 해요.
+      myGoal:null,
       // 기상했을 때 알람+스트레칭 유도+오늘 브리핑, 취침 시 내일 일정 미리보기 — 둘 다 기본은 꺼둔
       // 선택 기능이에요(예전 리뷰에서 "운동 전용처럼 보이는 강제 미션"은 빼기로 했던 것과는 달리,
       // 이건 특정 운동을 강요하지 않는 일반적인 아침/저녁 루틴 알림이라 이 앱의 정체성과 어울려요).
@@ -531,6 +535,7 @@
     overlap:null, overlapDismissed:false,
     energy:null,
     checkin:null, insightDismissedIds:{},
+    goalEditOpen:false, goalDraft:'',
     onboardingDone:false, onboardingStep:0,
     chatOpen:false, chat:null,
     historyMonthOffset:0, historySelectedDate:null,
@@ -623,10 +628,10 @@
     var totalMinutes = rows.reduce(function(s,r){ return s+r.duration; }, 0);
     // 남은 일정 기준으로만 문구를 만들어요 (전체 개수/시간이 섞이면 앞뒤가 안 맞는 문구가 돼요).
     var remainingMinutes = remaining.reduce(function(s,r){ return s+r.duration; }, 0);
-    // 체크인에서 "에너지 낮음"이라고 답했으면, 일정 개수·시간이 평소만큼이어도 오늘은
+    // 체크인에서 "컨디션 안 좋음"이라고 답했으면, 일정 개수·시간이 평소만큼이어도 오늘은
     // 재계획을 먼저 제안해요 — 규칙(개수·시간)만이 아니라 실제 상태를 반영하기 위해서예요.
     var checkin = state.checkins[dateKey];
-    var busy = rows.length >= 5 || totalMinutes >= 360 || overlapCount > 0 || (checkin && checkin.energy==='low');
+    var busy = rows.length >= 5 || totalMinutes >= 360 || overlapCount > 0 || (checkin && checkin.condition==='low');
     var headline;
     if(rows.length === 0) headline = '오늘 등록된 일정이 없어요. 새 일정을 추가하거나 편하게 쉬어도 좋아요.';
     else if(remaining.length === 0) headline = '오늘 남은 일정이 없어요. 수고 많으셨어요.';
@@ -692,7 +697,17 @@
     if(state.settings.primaryGoal==='health'){
       withMinVersion.sort(function(a,b){ return (b.isWorkout?1:0) - (a.isWorkout?1:0); });
     }
-    return { withMinVersion: withMinVersion, withoutMinVersion: withoutMinVersion };
+    // 컨디션에 따라 제안 강도를 3단계로 바꿔요 — 체크인 없이도 오늘이 객관적으로 바쁘면(busy)
+    // 컨디션과 무관하게 최대로 도와드리고, 바쁘지 않은데 컨디션만 안 좋다고 하시면 가볍게 버전만
+    // 조심스럽게 제안해요("완전히 빼자"는 제안은 진짜 바쁠 때만). 컨디션 좋음 + 안 바쁨이면
+    // 굳이 손대지 않아요 — 컨디션에 따라 "줄이기 옵션"이 실제로 달라지게 하려는 의도예요.
+    var checkin = state.checkins[dateKey];
+    var condition = (checkin && checkin.condition) || 'mid';
+    var busy = computeBriefing(dateKey, now).busy;
+    if(condition==='low') return { withMinVersion: withMinVersion, withoutMinVersion: withoutMinVersion };
+    if(condition==='mid') return busy ? { withMinVersion: withMinVersion, withoutMinVersion: withoutMinVersion }
+                                       : { withMinVersion: withMinVersion, withoutMinVersion: [] };
+    return busy ? { withMinVersion: withMinVersion, withoutMinVersion: [] } : { withMinVersion: [], withoutMinVersion: [] };
   }
 
   // v41: "전체 시간표로 비교하기"(하루 24시간을 다 펼치는 버전)가 대부분 회색인 빈 시간대만
@@ -729,7 +744,7 @@
     // 색을 주고(전/후가 서로 다른 색), 안 바뀌는 항목·이미 지난 항목은 전부 회색이에요.
     function blockColor(it, side){
       if(it.past || !it.changed) return { bg:'var(--chip-bg)', fg:'var(--text-muted)' };
-      return side==='before' ? { bg:'var(--danger-bg)', fg:'var(--danger)' } : { bg:'var(--success-bg)', fg:'var(--success)' };
+      return side==='before' ? { bg:'var(--chip-bg)', fg:'var(--text)' } : { bg:'var(--accent-soft)', fg:'var(--accent)' };
     }
     function col(items, side){
       var h = '<div class="tl-track" style="height:'+trackHeight+'px;">';
@@ -875,8 +890,8 @@
   var REASON_LABEL = { no_time:'시간이 없었어요', too_tired:'너무 피곤했어요', forgot:'깜빡했어요',
     no_longer_needed:'더 이상 필요 없어요', custom:'직접 입력' };
   // 오늘 컨디션 체크인 옵션 — 하루 1~2번, 대부분 선택만 하면 되는 가벼운 항목들이에요.
-  var ENERGY_OPTIONS = [['low','에너지 낮음'],['mid','에너지 보통'],['high','에너지 높음']];
-  var ENERGY_LABEL = { low:'에너지 낮음', mid:'에너지 보통', high:'에너지 높음' };
+  var CONDITION_OPTIONS = [['low','컨디션 안 좋음'],['mid','컨디션 보통'],['high','컨디션 좋음']];
+  var CONDITION_LABEL = { low:'컨디션 안 좋음', mid:'컨디션 보통', high:'컨디션 좋음' };
   var BURDEN_OPTIONS = [['light','가벼워요'],['normal','보통이에요'],['heavy','버거워요']];
   var AVAILABLE_MIN_PRESETS = [30,60,120,180];
 
@@ -1481,7 +1496,7 @@
     var html = '<div class="day-item" onclick="appAction(\'openSheet\',\''+row.entryId+'\')">' +
       '<span class="dot" style="background:'+itemColor(row.refId)+';"></span>' +
       '<span class="range">'+timeRangeShort(hm, row.duration)+'</span>' +
-      '<div class="main"><div class="lbl">'+esc(row.label)+(row.isFixed?' <span style="font-size:10px;">📌</span>':'')+(row.isMiniVersion?' <span style="font-size:10px;">🌱</span>':'')+'</div>';
+      '<div class="main"><div class="lbl">'+esc(row.label)+(row.isFixed?' <span style="font-size:10px;">📌</span>':'')+(row.isMiniVersion?' <span style="font-size:10.5px; font-weight:800; color:var(--accent);">· 가볍게</span>':'')+'</div>';
     if(row.memo) html += '<div class="memo">'+esc(row.memo)+'</div>';
     html += '</div>'+badge(statusLabel(live), statusTone(live))+'</div>';
     return html;
@@ -1508,23 +1523,35 @@
     }
 
     if(briefing){
-      html += '<div class="greet-card">' +
-        '<div class="greet-text"><div class="h1">좋은 하루예요</div><div class="sub">완벽한 계획보다, 다시 이어가는 하루</div></div>' +
-        '<div class="greet-mascot-col"><div class="greet-bubble">'+esc(briefing.headline)+'</div>'+mascotSvg(48)+'</div>' +
-        '</div>';
-      if(state.settings.weeklyFocus){
-        html += '<div class="section-sub" style="margin:-2px 0 12px;">🎯 이번 주 핵심 행동: '+esc(state.settings.weeklyFocus)+'</div>';
+      // 인사말 자리에 "나의 목표"를 크게 보여줘요 — 매번 열 때마다 자연스럽게 눈에 들어오게.
+      // 아직 안 적었으면 그 자리가 바로 입력창이 돼요(따로 설정에 들어갈 필요 없이).
+      html += '<div class="greet-card">';
+      if(ui.goalEditOpen){
+        html += '<div class="greet-text" style="flex:1;">' +
+          '<input class="textfield" id="goal-edit-input" style="font-size:19px; font-weight:800; padding:7px 10px; margin-bottom:2px;" ' +
+          'value="'+esc(ui.goalDraft)+'" placeholder="나의 목표를 적어보세요" ' +
+          'oninput="appAction(\'goalDraftInput\',this.value)" ' +
+          'onkeydown="if(event.key===\'Enter\'){this.blur();}" ' +
+          'onblur="appAction(\'goalSave\')"/>' +
+          '<div class="sub">완벽한 계획보다, 다시 이어가는 하루</div></div>';
+      } else {
+        var goalText = state.settings.myGoal;
+        html += '<div class="greet-text" style="cursor:pointer;" onclick="appAction(\'openGoalEdit\')">' +
+          '<div class="h1'+(goalText?'':' placeholder')+'">'+(goalText?esc(goalText):'나의 목표를 적어보세요')+'</div>' +
+          '<div class="sub">완벽한 계획보다, 다시 이어가는 하루</div></div>';
       }
+      html += '<div class="greet-mascot-col"><div class="greet-bubble">'+esc(briefing.headline)+'</div>'+mascotSvg(48)+'</div>' +
+        '</div>';
       var todayCheckin = state.checkins[dateKey];
       if(todayCheckin){
-        var checkinSummary = ENERGY_LABEL[todayCheckin.energy] +
+        var checkinSummary = CONDITION_LABEL[todayCheckin.condition] +
           (todayCheckin.availableMinutes ? ' · 가능 시간 '+formatDurationHM(todayCheckin.availableMinutes) : '') +
           (todayCheckin.mustDoLabel ? ' · 꼭 할 일: '+esc(todayCheckin.mustDoLabel) : '');
         html += '<div class="next-up-bar" style="cursor:pointer;" onclick="appAction(\'openCheckin\')"><span class="dot"></span>'+checkinSummary+' · 다시 체크하기</div>';
       } else {
         html += '<div class="section-sub" style="margin-top:-2px;">오늘 컨디션을 알려주시면 제안을 더 정확히 맞춰드려요.</div>';
         html += '<div class="preset-row" style="margin-bottom:10px;">';
-        ENERGY_OPTIONS.forEach(function(o){ html += chip(o[1], false, "appAction('checkinQuickEnergy','"+o[0]+"')", true); });
+        CONDITION_OPTIONS.forEach(function(o){ html += chip(o[1], false, "appAction('checkinQuickCondition','"+o[0]+"')", true); });
         html += chip('자세히 입력', false, "appAction('openCheckin')", true);
         html += '</div>';
       }
@@ -1748,10 +1775,9 @@
 
         var reasonBriefing = computeBriefing(dateKey, new Date());
         var reasonCheckin = state.checkins[dateKey];
+        // v42: 이유 문장 + 아래 전/후 타임라인이면 충분히 설명돼서, 같은 내용을 또 글로
+        // 나열하던 목록(change-summary)은 중복이라 뺐어요.
         body += '<div class="sheet-sub" style="margin-top:0;">'+buildAdjustReason(dateKey, reasonBriefing, reasonCheckin, changeLines.length, totalReduced)+'</div>';
-        body += '<div class="change-summary">';
-        changeLines.forEach(function(line){ body += '<div class="change-line">'+line+'</div>'; });
-        body += '</div>';
         body += '<div class="compare-total">예상 부담 '+formatDurationHM(totalReduced)+' 감소 · 나머지 일정은 그대로 유지돼요</div>';
 
         // "전체 시간표로 비교하기"(하루 24시간 다 펼치는 버전)가 대부분 회색인 빈 시간대만
@@ -1790,11 +1816,11 @@
   }
 
   // 자동조정이 왜 이렇게 제안됐는지 한 줄로 설명해요 — 근거 없이 "줄일게요"만 보여주면
-  // 신뢰하기 어렵다는 피드백을 반영했어요. 오늘 체크인(에너지)·브리핑(개수·시간)·최근 실패
+  // 신뢰하기 어렵다는 피드백을 반영했어요. 오늘 체크인(컨디션)·브리핑(개수·시간)·최근 실패
   // 패턴 중 있는 근거를 골라 조합해요.
   function buildAdjustReason(dateKey, briefing, checkin, changeCount, totalReducedMinutes){
     var parts = [];
-    if(checkin && checkin.energy==='low') parts.push('오늘 에너지가 낮다고 하셨고');
+    if(checkin && checkin.condition==='low') parts.push('오늘 컨디션이 안 좋다고 하셨고');
     else if(briefing.busy) parts.push('오늘 남은 일정이 '+briefing.remainingCount+'개, 총 '+formatDurationHM(briefing.remainingMinutes)+'라 빠듯해서');
     var insight = computeRecurringInsight();
     if(insight) parts.push('"'+esc(insight.event.label)+'"을 최근 자주 못 지켰던 것도 고려해서');
@@ -1808,8 +1834,8 @@
     var dateKey = todayKey();
     var candidateRows = buildTimetableForDate(dateKey).filter(function(r){ return !r.isFixed; });
     var body = '<div class="sheet-sub" style="margin-bottom:6px;">답한 내용은 오늘 제안에만 참고하고, 다 채우지 않아도 괜찮아요.</div>';
-    body += '<div class="field-label" style="margin-top:10px;">지금 에너지는요?</div><div class="preset-row">';
-    ENERGY_OPTIONS.forEach(function(o){ body += chip(o[1], c.energy===o[0], "appAction('checkinSetEnergy','"+o[0]+"')"); });
+    body += '<div class="field-label" style="margin-top:10px;">지금 컨디션은요?</div><div class="preset-row">';
+    CONDITION_OPTIONS.forEach(function(o){ body += chip(o[1], c.condition===o[0], "appAction('checkinSetCondition','"+o[0]+"')"); });
     body += '</div>';
     body += '<div class="field-label">오늘 쓸 수 있는 시간은요? (선택)</div><div class="preset-row">';
     AVAILABLE_MIN_PRESETS.forEach(function(m){ body += chip(formatDurationHM(m), c.availableMinutes===m, "appAction('checkinSetAvailable',"+m+")", true); });
@@ -2325,8 +2351,8 @@
     });
     html += '</div>';
 
-    html += '<div class="section-title">이번 주 핵심 행동</div><div class="section-sub">장기 목표를 이번 주 실행 가능한 한 가지로 좁혀두면, 오늘 무엇을 지킬지 더 명확해져요.</div>';
-    html += '<input class="textfield" value="'+esc(state.settings.weeklyFocus||'')+'" placeholder="예: 토익 단어 매일 30개씩 외우기" oninput="appAction(\'setWeeklyFocus\',this.value)"/>';
+    html += '<div class="section-title">나의 목표</div><div class="section-sub">장기 목표를 한 줄로 적어두면, 오늘 탭 상단에 크게 보여드려요. 오늘 탭에서 바로 눌러 적을 수도 있어요.</div>';
+    html += '<input class="textfield" value="'+esc(state.settings.myGoal||'')+'" placeholder="예: 토익 850점" oninput="appAction(\'setMyGoal\',this.value)"/>';
 
     html += '<div class="section-title">외부 캘린더</div><div class="section-sub">일정을 두 번 입력하지 않아도 되게, 외부 일정을 가져와 고정 일정으로 표시할 예정이에요. 지금은 프로토타입이라 미리보기만 가능해요.</div>';
     html += '<div class="settings-row"><div><div class="t">Google 캘린더 가져오기</div><div class="d">캘린더에 있는 일정을 그대로 불러와요.</div></div>' +
@@ -2486,21 +2512,29 @@
         ui.energy = null; break;
       }
 
+      // ── 나의 목표 (인사 카드 자리에서 바로 입력) ──
+      case 'openGoalEdit': ui.goalDraft = state.settings.myGoal || ''; ui.goalEditOpen = true; break;
+      case 'goalDraftInput': ui.goalDraft = args[0]; return;
+      case 'goalSave': {
+        state.settings.myGoal = (ui.goalDraft||'').trim() || null;
+        ui.goalEditOpen = false; break;
+      }
+
       // ── 오늘 컨디션 체크인 ──
-      case 'checkinQuickEnergy': {
+      case 'checkinQuickCondition': {
         var dkQ = todayKey();
-        state.checkins[dkQ] = Object.assign({}, state.checkins[dkQ], {energy: args[0], at: new Date().toISOString()});
+        state.checkins[dkQ] = Object.assign({}, state.checkins[dkQ], {condition: args[0], at: new Date().toISOString()});
         break;
       }
       case 'openCheckin': {
         var dkO = todayKey();
         var prevC = state.checkins[dkO] || {};
-        ui.checkin = { energy: prevC.energy || 'mid', availableMinutes: prevC.availableMinutes || null,
+        ui.checkin = { condition: prevC.condition || 'mid', availableMinutes: prevC.availableMinutes || null,
           mustDoId: prevC.mustDoId || null, burden: prevC.burden || null };
         break;
       }
       case 'checkinClose': ui.checkin = null; break;
-      case 'checkinSetEnergy': ui.checkin.energy = args[0]; break;
+      case 'checkinSetCondition': ui.checkin.condition = args[0]; break;
       case 'checkinSetAvailable': ui.checkin.availableMinutes = args[0]; break;
       case 'checkinSetMustDo': ui.checkin.mustDoId = args[0]; break;
       case 'checkinSetBurden': ui.checkin.burden = args[0]; break;
@@ -2601,7 +2635,7 @@
 
       case 'setIntervention': state.settings.interventionLevel = args[0]; break;
       case 'setPrimaryGoal': state.settings.primaryGoal = args[0]; break;
-      case 'setWeeklyFocus': state.settings.weeklyFocus = args[0]; return;
+      case 'setMyGoal': state.settings.myGoal = args[0].trim() || null; return;
       case 'externalCalendarStub': showInfoToast('실제 앱에서 연동할 예정이에요. 지금은 프로토타입이라 미리보기만 가능해요.'); return;
       case 'toggleRoutine': state.settings.routine[args[0]] = !state.settings.routine[args[0]]; break;
       case 'routineTimeStep': {
