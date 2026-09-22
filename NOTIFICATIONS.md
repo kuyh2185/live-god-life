@@ -46,6 +46,29 @@
    - `setupNativeNotifications()`는 이미 `render()` 호출 직전에 자동으로 실행돼요.
      별도로 호출할 필요 없어요.
 
+## "다음 일정까지 N분" 상태창 고정 알림 (음악 앱처럼 계속 떠 있는 알림)
+
+이건 `@capacitor/local-notifications`로 안 돼요 — 그건 정해진 시각에 한 번 울리는 알람이라,
+음악 앱 알림처럼 **몇 분마다 내용이 계속 바뀌면서 앱을 꺼도 안 사라지는** 상태창 알림에는
+안 맞아요. 이런 "진행 중(ongoing)" 알림은 기성 Capacitor 플러그인이 없어서 작은 커스텀
+네이티브 플러그인을 직접 만들어야 해요.
+
+- **Android**: Foreground Service를 띄우고, 그 서비스가 `NotificationCompat.Builder`로
+  `setOngoing(true)`(스와이프로 안 지워짐) 알림을 만들어서 주기적으로(예: 1분마다)
+  `NotificationManager.notify()`로 내용을 갱신해요. 음악 플레이어들이 쓰는 방식과 같아요.
+- **iOS**: iOS 16.1+의 Live Activity(ActivityKit)를 써요. 잠금화면·다이나믹 아일랜드에
+  뜨는 알림이고, 위젯 익스텐션 타겟을 따로 만들어야 해요(Swift 코드 필요, 순수 JS로는
+  불가능).
+- 둘 다 [Capacitor 커스텀 플러그인 가이드](https://capacitorjs.com/docs/plugins/creating-plugins)를
+  따라 만들면 돼요. `index.html`은 그 플러그인이 아래 3개 메서드를 제공한다고 가정하고
+  이미 연결해뒀어요(`window.Capacitor.Plugins.OngoingScheduleNotification`):
+  - `start()` — 앱 시작 시 한 번, 상태창 알림(Android) / Live Activity(iOS)를 띄워요.
+  - `update({ title, body })` — 1분마다(다른 알림 체크와 같은 타이머) 내용을 갱신해요.
+  - `stop()` — 오늘 남은 일정이 없으면 알림을 내려요.
+  - 실제 네이티브 플러그인을 만들면서 메서드 이름/파라미터가 달라지면, `index.html`의
+    `ongoingNotifPlugin()`과 `syncOngoingNextUpNotification()` 두 함수만 맞춰 고치면 돼요
+    (다른 코드는 안 건드려도 됨).
+
 ## 아직 안 된 것 (실제 앱 단계에서 결정 필요)
 
 - **반복 일정의 여러 날짜 예약**: `syncAllNativeRemindersForToday()`는 이름 그대로

@@ -493,10 +493,10 @@
       // 일정 알림은 소리(띠링)만 내고, 켜져 있을 때만 내용을 음성으로 읽어줘요 — 이어폰 없이
       // 밖에서 일정이 갑자기 소리로 흘러나오는 걸 막기 위해서예요.
       voice:{ ttsEnabled:true, autoSpeak:false, rate:1, headphonesConnected:false },
-      primaryGoal:null,
       // 장기 목표를 매번 잘게 쪼개진 않지만, 최소한 "나의 목표"를 한 줄로 적어두면
       // 오늘 무엇을 지킬지 판단 기준이 생겨요(목표 계층의 가장 가벼운 버전). 오늘 탭의
-      // 인사 카드 자리에 크게 보여줘서, 열 때마다 자연스럽게 떠올리게 해요.
+      // 인사 카드 자리에 크게 보여줘서, 열 때마다 자연스럽게 떠올리게 해요. 온보딩에서
+      // 직접 문장으로 적거나, 오늘 탭에서 그 자리를 눌러 언제든 다시 쓸 수 있어요.
       myGoal:null,
       // 기상했을 때 알람+스트레칭 유도+오늘 브리핑, 취침 시 내일 일정 미리보기 — 둘 다 기본은 꺼둔
       // 선택 기능이에요(예전 리뷰에서 "운동 전용처럼 보이는 강제 미션"은 빼기로 했던 것과는 달리,
@@ -545,6 +545,7 @@
     checkin:null, insightDismissedIds:{},
     goalEditOpen:false, goalDraft:'',
     aiServerStatus:null,
+    settingsSection:null, interventionExampleOpen:false,
     onboardingDone:false, onboardingStep:0,
     chatOpen:false, chat:null,
     historyMonthOffset:0, historySelectedDate:null,
@@ -691,7 +692,6 @@
       // 후보에서 안 빠져서, 변경 요약에는 나오지만 전/후 타임라인에서는 회색으로 처리되는
       // (이미 지났으니까) 모순이 있었어요. 지난 일정은 지금 와서 가볍게 할 수 없으니 후보에서 빼요.
       if(FINISHED.indexOf(live) !== -1 || live === 'in_progress' || live === 'awaiting_result') return false;
-      if(isProtectedByGoal(r)) return false; // 관심사로 우선 보호되는 일정은 제안 대상에서 제외해요
       // 버그 수정: 이미 "가볍게 하기"가 적용된 항목(isMiniVersion)은 원래 이름(ev.minVersion)이
       // 그대로 남아있어서, 걸러내지 않으면 이미 줄인 걸 또 줄이자고 계속 재제안했어요(그래서 일정을
       // 조정해도 문구가 안 바뀌는 것처럼 보였어요). 한 번 적용된 항목은 오늘은 더 이상 제안하지 않아요.
@@ -703,16 +703,15 @@
         duration:r.duration, miniDuration:computeMiniDuration(r.duration), isWorkout:r.isWorkout}; });
     var withoutMinVersion = rows.filter(function(r){ return !r.minVersion; })
       .map(function(r){ return {refId:r.refId, kind:r.kind, label:r.label, time:r.time, minVersion:null, duration:r.duration, isWorkout:r.isWorkout}; });
-    // 관심사가 "운동·건강"이면 운동 일정의 미니 버전을 목록 맨 앞으로 올려서 먼저 눈에 띄게 해요.
-    if(state.settings.primaryGoal==='health'){
-      withMinVersion.sort(function(a,b){ return (b.isWorkout?1:0) - (a.isWorkout?1:0); });
-    }
     // 컨디션에 따라 제안 강도를 3단계로 바꿔요 — 체크인 없이도 오늘이 객관적으로 바쁘면(busy)
     // 컨디션과 무관하게 최대로 도와드리고, 바쁘지 않은데 컨디션만 안 좋다고 하시면 가볍게 버전만
     // 조심스럽게 제안해요("완전히 빼자"는 제안은 진짜 바쁠 때만). 컨디션 좋음 + 안 바쁨이면
     // 굳이 손대지 않아요 — 컨디션에 따라 "줄이기 옵션"이 실제로 달라지게 하려는 의도예요.
     var checkin = state.checkins[dateKey];
     var condition = (checkin && checkin.condition) || 'mid';
+    // 비서 성향 "적극적으로"는 컨디션이 좋다고 답한 날에도 손 놓지 않게, 컨디션을 최소
+    // "보통" 취급해요 — "적당히"와 실제로 다르게 동작하는 지점이 여기예요.
+    if(state.settings.interventionLevel==='active' && condition==='high') condition = 'mid';
     var busy = computeBriefing(dateKey, now).busy;
     if(condition==='low') return { withMinVersion: withMinVersion, withoutMinVersion: withoutMinVersion };
     if(condition==='mid') return busy ? { withMinVersion: withMinVersion, withoutMinVersion: withoutMinVersion }
@@ -1014,6 +1013,7 @@
     if(ui.overlap) html += renderOverlapModal();
     if(ui.energy) html += renderEnergyModal();
     if(ui.checkin) html += renderCheckinModal();
+    if(ui.interventionExampleOpen) html += renderInterventionExampleModal();
     if(ui.quickAdd) html += renderQuickAddModal();
     if(ui.form) html += renderFormModal();
     if(ui.confirm) html += renderConfirmModal();
@@ -1040,54 +1040,42 @@
   }
 
   // ── 온보딩 (딱 1개 질문 + 예시 데이터 안내 — 예전 리뷰에서 "질문은 최소로" 정한 방향 그대로) ──
-  var GOAL_OPTIONS = [
-    ['study','학업 · 자기계발'], ['health','운동 · 건강'], ['work','업무 · 프로젝트'],
-    ['routine','루틴 만들기'], ['unsure','아직 잘 모르겠어요']
-  ];
-  // 관심사 선택은 판단 우선순위만 살짝 바꿔요 — 절대 일정을 자동으로 만들거나 지우지 않아요.
-  var GOAL_EFFECT_LABEL = {
-    study:'과제·공부·시험 일정을 피곤할 때도 먼저 지켜드려요.',
-    health:'운동 일정은 가볍게 하기를 먼저 적극적으로 제안해요.',
-    work:'메모에 마감이 적힌 일정을 피곤할 때도 먼저 지켜드려요.',
-    routine:'짧고 반복하기 쉬운 일정을 우선 추천해요.',
-    unsure:'특별히 우선하는 일정 없이 똑같이 봐드려요.'
-  };
-  function isProtectedByGoal(row){
-    var goal = state.settings.primaryGoal;
-    if(!goal) return false;
-    var text = (row.label||'') + ' ' + (row.memo||'');
-    if(goal==='study') return /과제|공부|시험|스터디/.test(text);
-    if(goal==='work') return /마감/.test(text);
-    return false;
-  }
+  // v44: 추상적인 카테고리 칩 고르기 대신, 진짜 목표를 직접 문장으로 적게 해요(오늘 탭의
+  // "나의 목표"와 같은 값이에요 — 여기서 적은 게 그대로 거기 크게 보여요).
   function renderOnboarding(){
     var step = ui.onboardingStep;
     var html = '<div class="onboard-wrap">';
-    if(step < 2) html += '<button class="onboard-skip" onclick="appAction(\'onboardingFinish\')">건너뛰기</button>';
+    if(step===0) html += '<button class="onboard-skip" onclick="appAction(\'onboardingFinishWithDemo\')">건너뛰기</button>';
     html += '<div class="onboard-body">';
     if(step===0){
       html += '<div class="onboard-emoji">🌱</div>' +
         '<div class="onboard-title">갓생살자는<br>계획을 지키라고 재촉하지 않아요</div>' +
         '<div class="onboard-sub">대신 지금의 나에게 맞게, 일정을 다시 짜주는 비서예요. 힘든 날엔 줄여서라도 이어갈 수 있게 도와드릴게요.</div>';
     } else if(step===1){
-      html += '<div class="onboard-title">요즘 가장 신경 쓰는 건<br>뭐예요?</div>' +
-        '<div class="onboard-sub">관심사를 알려주시면 비서가 브리핑과 일정 제안에서 조금 더 우선해서 참고해요. ' +
-        '자동으로 일정을 추가하지는 않아요. 나중에 설정에서 바꿀 수 있어요.</div><div style="margin-top:6px;">';
-      GOAL_OPTIONS.forEach(function(o){
-        html += '<button class="onboard-goal-chip'+(state.settings.primaryGoal===o[0]?' active':'')+'" onclick="appAction(\'onboardingChooseGoal\',\''+o[0]+'\')">'+esc(o[1])+'</button>';
-      });
-      html += '</div>';
+      html += '<div class="onboard-title">진짜 목표가<br>뭐예요?</div>' +
+        '<div class="onboard-sub">자유롭게 적어주세요. 비서가 브리핑과 일정 제안에서 참고해요. 오늘 탭 맨 위에 크게 보여드리고, 언제든 눌러서 다시 고쳐 쓸 수 있어요.</div>';
+      html += '<textarea class="textfield" style="min-height:100px; resize:vertical; margin-top:12px;" ' +
+        'placeholder="예: 이번 학기 학점 4.0 넘기기, 3개월 안에 5kg 감량하기..." ' +
+        'oninput="appAction(\'goalDraftInput\',this.value)">'+esc(ui.goalDraft)+'</textarea>';
     } else {
       html += '<div class="onboard-emoji">✨</div>' +
         '<div class="onboard-title">준비됐어요</div>' +
-        '<div class="onboard-sub">예시 일정 몇 개를 미리 넣어뒀어요. 둘러보면서 마음대로 바꾸거나 지워도 괜찮아요.</div>';
+        '<div class="onboard-sub">예시 일정으로 먼저 기능을 둘러보시겠어요, 아니면 빈 상태로 바로 시작하시겠어요?</div>';
     }
     html += '</div><div class="onboard-dots">';
     for(var i=0;i<3;i++) html += '<div class="onboard-dot'+(i===step?' active':'')+'"></div>';
     html += '</div>';
-    if(step===0) html += btn('다음', 'primary', "appAction('onboardingNext')");
-    else if(step===1) html += btn(state.settings.primaryGoal ? '다음' : '건너뛰고 다음', 'primary', "appAction('onboardingNext')");
-    else html += btn('시작할게요', 'primary', "appAction('onboardingFinish')");
+    if(step===0){
+      html += btn('다음', 'primary', "appAction('onboardingNext')");
+    } else if(step===1){
+      html += '<div style="display:flex; gap:10px;">' +
+        btn('건너뛰기', 'ghost', "appAction('onboardingSkipGoal')") +
+        btn('다음', 'primary', "appAction('onboardingSaveGoalNext')") + '</div>';
+    } else {
+      html += '<div style="display:flex; gap:10px;">' +
+        btn('빈 상태로 시작', 'ghost', "appAction('onboardingFinishFresh')") +
+        btn('예시로 둘러보기', 'primary', "appAction('onboardingFinishWithDemo')") + '</div>';
+    }
     html += '</div>';
     return html;
   }
@@ -2526,72 +2514,110 @@
   }
 
   // ── 설정 ──
+  // v44: 한 화면에 전부 나열하던 걸 카테고리로 묶었어요 — 카테고리를 누르면 그 안의 세부
+  // 설정이 나와요. 비서 성향은 "조용히/적당히/적극적으로"가 실제로 뭘 다르게 하는지
+  // 예시 보기 버튼으로 바로 확인할 수 있게 했어요.
+  var SETTINGS_SECTIONS = [
+    ['assistant','비서','성향과 자연어 대화 서버'],
+    ['notifications','알림','기상 · 취침 루틴 (일정별 알림은 각 일정에서 설정해요)'],
+    ['voice','음성','알림을 소리로 읽어줄지'],
+    ['external','외부 연동','캘린더 · 시간표 가져오기'],
+    ['other','기타','']
+  ];
+  var SETTINGS_SECTION_TITLE = {assistant:'비서', notifications:'알림', voice:'음성', external:'외부 연동', other:'기타'};
   function renderSettings(){
-    var html = '<div class="section-title" style="margin-top:14px;">비서 성향</div><div class="section-sub">얼마나 먼저 나서서 도와줄지 정해요. "조용히"로 두면 오늘 화면의 먼저 나서는 제안 버튼(예: 피곤해요)이 뜨지 않아요.</div>';
-    html += '<div class="preset-row">';
-    [['quiet','조용히'],['moderate','적당히'],['active','적극적으로']].forEach(function(o){
-      html += chip(o[1], state.settings.interventionLevel===o[0], "appAction('setIntervention','"+o[0]+"')");
+    if(ui.settingsSection) return renderSettingsSection(ui.settingsSection);
+    var html = '';
+    SETTINGS_SECTIONS.forEach(function(s){
+      html += '<div class="settings-row" style="cursor:pointer;" onclick="appAction(\'openSettingsSection\',\''+s[0]+'\')">' +
+        '<div><div class="t">'+s[1]+'</div>'+(s[2]?'<div class="d">'+s[2]+'</div>':'')+'</div>' +
+        '<span style="color:var(--text-faint); font-size:17px; flex-shrink:0;">›</span></div>';
     });
-    html += '</div>';
-
-    html += '<div class="section-title">관심사</div><div class="section-sub">' +
-      (state.settings.primaryGoal ? esc(GOAL_EFFECT_LABEL[state.settings.primaryGoal]) : '아직 선택하지 않았어요. 골라두면 비서 제안에 조금 더 참고할게요.') + '</div>';
-    html += '<div class="preset-row">';
-    GOAL_OPTIONS.forEach(function(o){
-      html += chip(o[1], state.settings.primaryGoal===o[0], "appAction('setPrimaryGoal','"+o[0]+"')");
-    });
-    html += '</div>';
-
-    html += '<div class="section-title">나의 목표</div><div class="section-sub">장기 목표를 한 줄로 적어두면, 오늘 탭 상단에 크게 보여드려요. 오늘 탭에서 바로 눌러 적을 수도 있어요.</div>';
-    html += '<input class="textfield" value="'+esc(state.settings.myGoal||'')+'" placeholder="예: 토익 850점" oninput="appAction(\'setMyGoal\',this.value)"/>';
-
-    html += '<div class="section-title">비서에게 자연어로 말하기 (실험적)</div><div class="section-sub">' +
-      '서버를 연결하면 채팅에서 자유로운 문장을 실제 LLM이 이해해요. 비워두면 지금처럼 규칙 기반으로 동작해요 (server/README.md 참고).</div>';
-    html += '<div class="field-label" style="margin-top:0;">AI 서버 주소</div>' +
-      '<input class="textfield" value="'+esc(state.settings.aiServer.url)+'" placeholder="https://godsaeng-assistant.onrender.com" oninput="appAction(\'setAiServerUrl\',this.value)"/>';
-    html += '<div class="field-label">서버 비밀키</div>' +
-      '<input class="textfield" type="password" value="'+esc(state.settings.aiServer.secret)+'" placeholder="APP_SHARED_SECRET" oninput="appAction(\'setAiServerSecret\',this.value)"/>';
-    html += btn('연결 테스트', 'secondary', "appAction('testAiServer')");
-    if(ui.aiServerStatus) html += '<div class="section-sub" style="margin-top:6px;">'+esc(ui.aiServerStatus)+'</div>';
-
-    html += '<div class="section-title">외부 캘린더</div><div class="section-sub">일정을 두 번 입력하지 않아도 되게, 외부 일정을 가져와 고정 일정으로 표시할 예정이에요. 지금은 프로토타입이라 미리보기만 가능해요.</div>';
-    html += '<div class="settings-row"><div><div class="t">Google 캘린더 가져오기</div><div class="d">캘린더에 있는 일정을 그대로 불러와요.</div></div>' +
-      '<button class="btn btn-secondary" style="width:auto; padding:8px 14px; margin-bottom:0;" onclick="appAction(\'externalCalendarStub\')">준비 중</button></div>';
-    html += '<div class="settings-row"><div><div class="t">학교 시간표 가져오기</div><div class="d">강의계획표 사진이나 파일로 한 번에 등록해요.</div></div>' +
-      '<button class="btn btn-secondary" style="width:auto; padding:8px 14px; margin-bottom:0;" onclick="appAction(\'externalCalendarStub\')">준비 중</button></div>';
-
-    html += '<div class="section-title">음성</div>';
-    html += '<div class="settings-row"><div><div class="t">음성 안내 사용</div><div class="d">비서 응답을 소리로 들려줘요.</div></div>' +
-      toggleTrack(state.settings.voice.ttsEnabled, "appAction('toggleVoice','ttsEnabled')")+'</div>';
-    html += '<div class="settings-row"><div><div class="t">브리핑 자동으로 읽어주기</div><div class="d">오늘 화면에 들어오면 브리핑을 한 번 읽어줘요.</div></div>' +
-      toggleTrack(state.settings.voice.autoSpeak, "appAction('toggleVoice','autoSpeak')")+'</div>';
-    html += '<div class="settings-row"><div><div class="t">이어폰 연결 시뮬레이션</div>' +
-      '<div class="d">일정 알림은 이게 켜져 있을 때만 내용을 음성으로 읽어줘요. 꺼져 있으면 띠링 소리만 나고, 알림의 "듣기" 버튼이나 배너를 직접 봐야 내용을 알 수 있어요. 실제 앱에서는 이어폰 연결을 자동으로 감지해요 — 여기선 프로토타입이라 직접 켜고 꺼서 시험해볼 수 있게 했어요.</div></div>' +
-      toggleTrack(state.settings.voice.headphonesConnected, "appAction('toggleVoice','headphonesConnected')")+'</div>';
-
-    html += '<div class="section-title">아침 · 취침 루틴</div>';
-    var wt = parseHM(state.settings.routine.wakeTime);
-    html += '<div class="settings-row"><div><div class="t">기상 알림 + 컨디션 체크</div>' +
-      '<div class="d">기상 시간에 알림으로 오늘 컨디션을 확인하고, 가벼운 스트레칭과 함께 오늘 일정을 바로 브리핑해줘요.</div></div>' +
-      toggleTrack(state.settings.routine.wakeEnabled, "appAction('toggleRoutine','wakeEnabled')")+'</div>';
-    if(state.settings.routine.wakeEnabled){
-      html += '<div class="routine-expand"><div class="stepper-row">'+stepperHtml('기상 시간', meridiemTimeLabel(wt.hour,wt.minute), "appAction('routineTimeStep','wake',-30)", "appAction('routineTimeStep','wake',30)")+'</div>';
-      html += '<button class="btn btn-secondary" onclick="appAction(\'previewWakeRoutine\')">지금 미리보기</button></div>';
-    }
-    var st = parseHM(state.settings.routine.sleepTime);
-    html += '<div class="settings-row"><div><div class="t">취침 알림 + 내일 일정 미리보기</div>' +
-      '<div class="d">취침 시간에 알림으로 내일 일정을 미리 알려줘요.</div></div>' +
-      toggleTrack(state.settings.routine.sleepEnabled, "appAction('toggleRoutine','sleepEnabled')")+'</div>';
-    if(state.settings.routine.sleepEnabled){
-      html += '<div class="routine-expand"><div class="stepper-row">'+stepperHtml('취침 시간', meridiemTimeLabel(st.hour,st.minute), "appAction('routineTimeStep','sleep',-30)", "appAction('routineTimeStep','sleep',30)")+'</div>';
-      html += '<button class="btn btn-secondary" onclick="appAction(\'previewSleepRoutine\')">지금 미리보기</button></div>';
-    }
-    html += '<div class="section-sub" style="margin-top:8px;">이 화면은 프로토타입이라 실제 알림 대신, 화면 위 알림 배너로 미리보기만 보여드려요.</div>';
-
-    html += '<div class="section-title">기타</div>';
-    html += '<button class="btn btn-secondary" onclick="appAction(\'onboardingRestart\')">온보딩 다시 보기</button>';
-
     return html;
+  }
+  function settingsSectionHeader(section){
+    return '<div style="display:flex; align-items:center; gap:8px; margin:14px 0 4px;">' +
+      '<button class="cal-nav-btn" onclick="appAction(\'closeSettingsSection\')">‹</button>' +
+      '<div class="section-title" style="margin:0;">'+esc(SETTINGS_SECTION_TITLE[section])+'</div></div>';
+  }
+  function renderSettingsSection(section){
+    var html = settingsSectionHeader(section);
+    if(section==='assistant'){
+      html += '<div class="section-sub">얼마나 먼저 나서서 도와줄지 정해요.</div>';
+      html += '<div class="preset-row" style="justify-content:flex-start;">';
+      [['quiet','조용히'],['moderate','적당히'],['active','적극적으로']].forEach(function(o){
+        html += chip(o[1], state.settings.interventionLevel===o[0], "appAction('setIntervention','"+o[0]+"')");
+      });
+      html += '</div>';
+      html += '<button class="btn btn-secondary" style="margin-top:2px;" onclick="appAction(\'openInterventionExample\')">성향별로 뭐가 달라지나요?</button>';
+
+      html += '<div class="section-title">비서에게 자연어로 말하기 (실험적)</div><div class="section-sub">' +
+        '서버를 연결하면 채팅에서 자유로운 문장을 실제 LLM이 이해해요. 비워두면 지금처럼 규칙 기반으로 동작해요 (server/README.md 참고).</div>';
+      html += '<div class="field-label" style="margin-top:0;">AI 서버 주소</div>' +
+        '<input class="textfield" value="'+esc(state.settings.aiServer.url)+'" placeholder="https://godsaeng-assistant.onrender.com" oninput="appAction(\'setAiServerUrl\',this.value)"/>';
+      html += '<div class="field-label">서버 비밀키</div>' +
+        '<input class="textfield" type="password" value="'+esc(state.settings.aiServer.secret)+'" placeholder="APP_SHARED_SECRET" oninput="appAction(\'setAiServerSecret\',this.value)"/>';
+      html += btn('연결 테스트', 'secondary', "appAction('testAiServer')");
+      if(ui.aiServerStatus) html += '<div class="section-sub" style="margin-top:6px;">'+esc(ui.aiServerStatus)+'</div>';
+    } else if(section==='notifications'){
+      var wt = parseHM(state.settings.routine.wakeTime);
+      html += '<div class="settings-row"><div><div class="t">기상 알림 + 컨디션 체크</div>' +
+        '<div class="d">기상 시간에 알림으로 오늘 컨디션을 확인하고, 가벼운 스트레칭과 함께 오늘 일정을 바로 브리핑해줘요.</div></div>' +
+        toggleTrack(state.settings.routine.wakeEnabled, "appAction('toggleRoutine','wakeEnabled')")+'</div>';
+      if(state.settings.routine.wakeEnabled){
+        html += '<div class="routine-expand"><div class="stepper-row">'+stepperHtml('기상 시간', meridiemTimeLabel(wt.hour,wt.minute), "appAction('routineTimeStep','wake',-30)", "appAction('routineTimeStep','wake',30)")+'</div>';
+        html += '<button class="btn btn-secondary" onclick="appAction(\'previewWakeRoutine\')">지금 미리보기</button></div>';
+      }
+      var st = parseHM(state.settings.routine.sleepTime);
+      html += '<div class="settings-row"><div><div class="t">취침 알림 + 내일 일정 미리보기</div>' +
+        '<div class="d">취침 시간에 알림으로 내일 일정을 미리 알려줘요.</div></div>' +
+        toggleTrack(state.settings.routine.sleepEnabled, "appAction('toggleRoutine','sleepEnabled')")+'</div>';
+      if(state.settings.routine.sleepEnabled){
+        html += '<div class="routine-expand"><div class="stepper-row">'+stepperHtml('취침 시간', meridiemTimeLabel(st.hour,st.minute), "appAction('routineTimeStep','sleep',-30)", "appAction('routineTimeStep','sleep',30)")+'</div>';
+        html += '<button class="btn btn-secondary" onclick="appAction(\'previewSleepRoutine\')">지금 미리보기</button></div>';
+      }
+      html += '<div class="section-sub" style="margin-top:8px;">이 화면은 프로토타입이라 실제 알림 대신, 화면 위 알림 배너로 미리보기만 보여드려요. 일정 하나하나의 "몇 분 전에 알려줄지"는 일정관리 탭에서 그 일정을 눌러 설정해요.</div>';
+    } else if(section==='voice'){
+      html += '<div class="settings-row"><div><div class="t">음성 안내 사용</div><div class="d">비서 응답을 소리로 들려줘요.</div></div>' +
+        toggleTrack(state.settings.voice.ttsEnabled, "appAction('toggleVoice','ttsEnabled')")+'</div>';
+      html += '<div class="settings-row"><div><div class="t">브리핑 자동으로 읽어주기</div><div class="d">오늘 화면에 들어오면 브리핑을 한 번 읽어줘요.</div></div>' +
+        toggleTrack(state.settings.voice.autoSpeak, "appAction('toggleVoice','autoSpeak')")+'</div>';
+      html += '<div class="settings-row"><div><div class="t">이어폰 연결 시뮬레이션</div>' +
+        '<div class="d">일정 알림은 이게 켜져 있을 때만 내용을 음성으로 읽어줘요. 꺼져 있으면 띠링 소리만 나고, 알림의 "듣기" 버튼이나 배너를 직접 봐야 내용을 알 수 있어요. 실제 앱에서는 이어폰 연결을 자동으로 감지해요 — 여기선 프로토타입이라 직접 켜고 꺼서 시험해볼 수 있게 했어요.</div></div>' +
+        toggleTrack(state.settings.voice.headphonesConnected, "appAction('toggleVoice','headphonesConnected')")+'</div>';
+    } else if(section==='external'){
+      html += '<div class="section-sub">일정을 두 번 입력하지 않아도 되게, 외부 일정을 가져와 고정 일정으로 표시할 예정이에요. 지금은 프로토타입이라 미리보기만 가능해요.</div>';
+      html += '<div class="settings-row"><div><div class="t">Google 캘린더 가져오기</div><div class="d">캘린더에 있는 일정을 그대로 불러와요.</div></div>' +
+        '<button class="btn btn-secondary" style="width:auto; padding:8px 14px; margin-bottom:0;" onclick="appAction(\'externalCalendarStub\')">준비 중</button></div>';
+      html += '<div class="settings-row"><div><div class="t">학교 시간표 가져오기</div><div class="d">강의계획표 사진이나 파일로 한 번에 등록해요.</div></div>' +
+        '<button class="btn btn-secondary" style="width:auto; padding:8px 14px; margin-bottom:0;" onclick="appAction(\'externalCalendarStub\')">준비 중</button></div>';
+    } else {
+      html += '<button class="btn btn-secondary" onclick="appAction(\'onboardingRestart\')">온보딩 다시 보기</button>';
+    }
+    return html;
+  }
+  // 비서 성향 3단계가 실제로 뭘 다르게 하는지 — 추상적인 설명 대신, 오늘 바로 벌어질 수 있는
+  // 구체적인 상황으로 보여줘요. 지금 켜져 있는 단계는 강조해서 표시해요.
+  var INTERVENTION_EXAMPLES = [
+    ['quiet','조용히','비서가 먼저 나서지 않아요.',
+      '오늘 일정이 많거나 컨디션이 안 좋다고 답해도 "오늘 일정 다시 짜기" 같은 제안 버튼이 뜨지 않아요. 줄이고 싶으면 채팅에서 직접 "오늘 계획 좀 줄여줘"라고 말해야 해요.'],
+    ['moderate','적당히','필요할 때만 먼저 제안해요.',
+      '겹치는 일정이 있거나 컨디션 체크에서 "안 좋음"·"버거워요"라고 답한 날엔 먼저 "오늘 일정 다시 짜기"를 보여드려요. 컨디션이 괜찮다고 답한 날엔 일정이 많지 않다면 굳이 먼저 권하지 않아요.'],
+    ['active','적극적으로','조금이라도 도움될 상황이면 먼저 제안해요.',
+      '컨디션이 좋다고 답한 날에도, 가볍게 줄일 수 있는 일정이 하나라도 있으면 먼저 보여드려요. 거의 매일 한 번쯤은 제안을 받게 돼요.']
+  ];
+  function renderInterventionExampleModal(){
+    var body = '';
+    INTERVENTION_EXAMPLES.forEach(function(e){
+      var active = state.settings.interventionLevel===e[0];
+      body += '<div class="fatigue-item" style="align-items:flex-start;'+(active?' background:var(--accent-soft); margin:0 -4px; padding:11px 10px; border-radius:10px;':'')+'">' +
+        '<div style="flex:1;"><div class="lbl">'+esc(e[1])+(active?' <span style="color:var(--accent); font-size:11px; font-weight:800;">· 지금 이 설정이에요</span>':'')+'</div>' +
+        '<div class="sub" style="margin-top:3px; font-weight:700; color:var(--text-muted);">'+esc(e[2])+'</div>' +
+        '<div class="sub" style="margin-top:4px;">'+esc(e[3])+'</div></div></div>';
+    });
+    body += '<button class="btn btn-ghost" style="margin-top:14px;" onclick="appAction(\'closeInterventionExample\')">닫기</button>';
+    return '<div class="overlay" onclick="appAction(\'closeInterventionExample\')"><div class="sheet" onclick="event.stopPropagation()">' +
+      '<div class="sheet-title">비서 성향별로 뭐가 달라지나요?</div>'+body+'</div></div>';
   }
   function toggleTrack(on, onclick){
     return '<button class="toggle-track'+(on?' on':'')+'" onclick="'+onclick+'"><div class="toggle-thumb"></div></button>';
@@ -2603,7 +2629,7 @@
     var now = new Date();
     switch(name){
       case 'closeBanner': ui.bannerOpen = false; break;
-      case 'setTab': ui.tab = args[0]; break;
+      case 'setTab': ui.tab = args[0]; if(args[0]!=='settings') ui.settingsSection = null; break;
       case 'setDay': ui.dayOffset = args[0]; ui.briefingDismissed = false; ui.overlapDismissed = false; break;
       case 'dismissBriefingAction': ui.briefingDismissed = true; break;
       case 'setScheduleTab': ui.scheduleTab = args[0]; break;
@@ -2847,9 +2873,11 @@
       }
 
       case 'setIntervention': state.settings.interventionLevel = args[0]; break;
-      case 'setPrimaryGoal': state.settings.primaryGoal = args[0]; break;
-      case 'setMyGoal': state.settings.myGoal = args[0].trim() || null; return;
       case 'externalCalendarStub': showInfoToast('실제 앱에서 연동할 예정이에요. 지금은 프로토타입이라 미리보기만 가능해요.'); return;
+      case 'openSettingsSection': ui.settingsSection = args[0]; break;
+      case 'closeSettingsSection': ui.settingsSection = null; break;
+      case 'openInterventionExample': ui.interventionExampleOpen = true; break;
+      case 'closeInterventionExample': ui.interventionExampleOpen = false; break;
       case 'setAiServerUrl': state.settings.aiServer.url = args[0]; ui.aiServerStatus = null; return;
       case 'setAiServerSecret': state.settings.aiServer.secret = args[0]; ui.aiServerStatus = null; return;
       case 'testAiServer': testAiServerConnection(); return;
@@ -2885,13 +2913,25 @@
       }
 
       case 'onboardingNext': ui.onboardingStep = Math.min(2, ui.onboardingStep+1); break;
-      case 'onboardingChooseGoal': {
-        state.settings.primaryGoal = args[0];
+      case 'onboardingSkipGoal': ui.onboardingStep = Math.min(2, ui.onboardingStep+1); break;
+      case 'onboardingSaveGoalNext': {
+        state.settings.myGoal = (ui.goalDraft||'').trim() || null;
         ui.onboardingStep = Math.min(2, ui.onboardingStep+1);
         break;
       }
-      case 'onboardingFinish': ui.onboardingDone = true; ui.onboardingStep = 0; break;
-      case 'onboardingRestart': ui.onboardingDone = false; ui.onboardingStep = 0; break;
+      case 'onboardingFinishWithDemo': ui.onboardingDone = true; ui.onboardingStep = 0; break;
+      case 'onboardingFinishFresh': {
+        // "빈 상태로 시작"은 미리 채워둔 예시 데이터를 전부 비워요 — 진짜 내 일정부터 시작하고 싶은
+        // 사람을 위한 선택지예요. 관심사·목표 같은 설정값은 그대로 남아요.
+        state.events = [];
+        state.adhocEntries = [];
+        state.scheduleEntries = [];
+        state.eventOccurrenceOverrides = {};
+        state.changeLog = [];
+        ui.onboardingDone = true; ui.onboardingStep = 0;
+        break;
+      }
+      case 'onboardingRestart': ui.onboardingDone = false; ui.onboardingStep = 0; ui.goalDraft = state.settings.myGoal || ''; break;
 
       case 'resolveOverlap': {
         var ovKind = args[0], ovRefId = args[1], ovNewTime = args[2];
@@ -3098,14 +3138,39 @@
     syncAllNativeRemindersForToday();
   }
 
+  // ── "다음 일정까지 N분" 상태창 고정 알림 (음악 앱처럼 계속 떠 있는 알림) ──
+  // @capacitor/local-notifications는 정해진 시각에 한 번 울리는 알람이라 이런 용도엔 안 맞아요
+  // (내용을 몇 분마다 계속 갱신하면서 앱을 꺼도 안 사라지는 "진행 중" 알림은 안드로이드에서
+  // Foreground Service로, iOS에서는 Live Activity(ActivityKit)로 직접 만들어야 해요 — 둘 다
+  // 기성 플러그인이 없어서 작은 커스텀 네이티브 플러그인이 필요해요). 그 플러그인이
+  // window.Capacitor.Plugins.OngoingScheduleNotification로 start/update/stop을 제공한다고
+  // 가정하고 미리 연결해뒀어요 — 자세한 구현 가이드는 NOTIFICATIONS.md 참고.
+  function ongoingNotifPlugin(){
+    try{ return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.OngoingScheduleNotification) || null; }
+    catch(e){ return null; }
+  }
+  function syncOngoingNextUpNotification(){
+    var plugin = ongoingNotifPlugin();
+    if(!plugin) return;
+    var nextUp = computeNextUp(todayKey(), new Date());
+    if(!nextUp){ plugin.stop().catch(function(){}); return; }
+    var text = nextUp.mode==='in_progress'
+      ? ('지금 "'+nextUp.label+'" 진행 중 · '+nextUp.minutesLeft+'분 후 종료')
+      : ('다음 일정까지 '+nextUp.minutesLeft+'분 · '+nextUp.time+' '+nextUp.label);
+    plugin.update({ title:'갓생살자', body:text }).catch(function(){});
+  }
+
   // 1분마다 시계 갱신 + 알림 체크 — 열려있는 시트가 없을 때만 화면을 다시 그려서, 조작 중인
-  // 모달이 리셋되지 않게 해요. 알림 체크는 모달이 열려 있어도 계속 돌아가요.
+  // 모달이 리셋되지 않게 해요. 알림 체크와 상태창 알림 갱신은 모달이 열려 있어도 계속 돌아가요.
   setInterval(function(){
     checkReminders();
-    if(!ui.sheet && !ui.overlap && !ui.energy && !ui.checkin && !ui.quickAdd && !ui.form) render();
+    syncOngoingNextUpNotification();
+    if(!ui.sheet && !ui.overlap && !ui.energy && !ui.checkin && !ui.quickAdd && !ui.form && !ui.interventionExampleOpen) render();
   }, 60000);
   checkReminders();
   setupNativeNotifications();
+  var ongoingPluginAtBoot = ongoingNotifPlugin();
+  if(ongoingPluginAtBoot){ ongoingPluginAtBoot.start().catch(function(){}); syncOngoingNextUpNotification(); }
 
   render();
 })();
