@@ -75,10 +75,11 @@ const ACTION_TOOL = {
           'change_duration',
           'mark_entry_status',
           'skip_next_week',
+          'adjust_burden',
           'answer',
           'unknown',
         ],
-        description: '실행할 동작의 종류. 순수 질문/정보 요청이면 answer, 뭘 원하는지 특정할 수 없으면 unknown.',
+        description: '실행할 동작의 종류. 순수 질문/정보 요청이면 answer, 뭘 원하는지 특정할 수 없으면 unknown. 오늘 일정을 줄이고/가볍게 하고 싶다는 요청이면 adjust_burden.',
       },
       eventId: { type: 'string', description: '대상이 되는 기존 반복 일정의 id (context로 받은 목록 중 하나).' },
       entryId: { type: 'string', description: '대상이 되는 오늘 실행 항목의 id (context의 todayTimetable 중 하나).' },
@@ -136,7 +137,14 @@ const SYSTEM_PROMPT = `당신은 "갓생살자"라는 한국어 개인 일정 �
    골라 reschedule_event로 채우거나(하나뿐이면) 여러 개면 answer로 제안만 하세요.
 6. 앱이 지원하지 않는 것(뉴스 요약, 날씨, 실제 통화 등)을 요청하면 unknown으로
    처리하고 reply에 아직 지원하지 않는다고 정중히 안내하세요.
-7. 존댓말을 쓰고, 한두 문장으로 짧게 답하세요.`;
+7. "오늘 계획 좀 줄여줘", "피곤해서 몇 개는 빼고 싶어", "집 정리 때문에 바빠서 일정
+   줄여야 해"처럼 특정 일정 하나가 아니라 오늘 일정 전반을 줄이거나 가볍게 하고
+   싶다는 요청이면 action을 adjust_burden으로 하세요. eventId/entryId 등 다른
+   필드는 채우지 말고, requiresConfirmation은 true로, reply에는 무엇을 줄일지
+   나열하지 말고 "확인 화면에서 어떻게 줄이면 좋을지 보여드릴게요" 정도로
+   짧게 안내하세요(실제로 무엇을 줄일지는 이 도구가 아니라 별도 화면에서
+   사용자가 말한 이유를 다시 분석해 결정해요).
+8. 존댓말을 쓰고, 한두 문장으로 짧게 답하세요.`;
 
 app.post('/api/parse', async (req, res) => {
   try {
