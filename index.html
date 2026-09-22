@@ -219,6 +219,9 @@
   .settings-row{display:flex; justify-content:space-between; align-items:center; padding:14px 0;
     border-bottom:1px solid var(--border);}
   .settings-row:last-child{border-bottom:none;}
+  .back-btn{background:none; border:none; padding:8px; margin-left:-8px; display:flex;
+    align-items:center; justify-content:center; color:var(--text); cursor:pointer; border-radius:999px;}
+  .back-btn:active{background:var(--chip-bg);}
   .settings-row .t{font-size:14px; font-weight:700;}
   .settings-row .d{font-size:11.5px; color:var(--text-muted); margin-top:3px; max-width:230px;}
   .toggle-track{width:44px; height:26px; border-radius:999px; background:var(--border); border:none;
@@ -533,11 +536,10 @@
       // 기상·취침 루틴은 선택이 아니라 항상 켜져 있는 필수 알림이에요 — 시간만 조절할 수 있어요
       // (예전 리뷰에서 "운동 전용처럼 보이는 강제 미션"은 빼기로 했던 것과는 별개로, 이건 특정
       // 운동을 강요하지 않는 일반적인 아침/저녁 루틴 알림이라 이 앱의 정체성과 어울려요).
-      // perWeekday가 꺼져 있으면 매일 같은 시간(7칸이 전부 같은 값)이고, 켜면 요일별로
-      // 다르게 설정할 수 있어요(주말엔 더 늦게 일어나고 싶은 경우 등). 키는 Date.getDay()와
-      // 같은 요일 인덱스(0=일 ~ 6=토)예요.
+      // 요일별로 다르게 설정할 수 있어요(주말엔 더 늦게 일어나고 싶은 경우 등) — 처음엔 7일
+      // 모두 같은 값이라 결과적으로 "매일 같은 시간"과 똑같아요. 키는 Date.getDay()와 같은
+      // 요일 인덱스(0=일 ~ 6=토)예요.
       routine:{
-        perWeekday:false,
         wakeTimes:{0:'07:00',1:'07:00',2:'07:00',3:'07:00',4:'07:00',5:'07:00',6:'07:00'},
         sleepTimes:{0:'23:00',1:'23:00',2:'23:00',3:'23:00',4:'23:00',5:'23:00',6:'23:00'}
       },
@@ -1001,6 +1003,10 @@
   function iconSchedule(){ return '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>'; }
   function iconHistory(){ return '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3"/><path d="M3 4.5v5h5"/><path d="M12 8v4.5l3 2"/></svg>'; }
   function iconSettings(){ return '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l1.9-1.4-1.5-2.6-2.2.9a7 7 0 0 0-2-1.2L14.7 4h-3l-.4 2.5a7 7 0 0 0-2 1.2l-2.2-.9-1.5 2.6L7.5 10.8A7 7 0 0 0 7.4 12a7 7 0 0 0 .1 1.2l-1.9 1.4 1.5 2.6 2.2-.9c.6.5 1.3.9 2 1.2l.4 2.5h3l.4-2.5a7 7 0 0 0 2-1.2l2.2.9 1.5-2.6-1.9-1.4c.07-.4.1-.8.1-1.2Z"/></svg>'; }
+  // 설정 세부 화면의 "뒤로" — 예전엔 달력 월 이동용 원형 버튼(.cal-nav-btn)에 "‹" 글자를 그대로
+  // 재활용해서 붙어 보이고 안 예뻤어요. 화살표를 SVG로 또렷하게 그리고, 원형 배경 없이 탭
+  // 영역만 넉넉하게 줘서 제목과 자연스럽게 붙게 했어요.
+  function iconChevronLeft(){ return '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>'; }
 
   function statusLabel(s){
     return {upcoming:'예정', in_progress:'진행 중', awaiting_result:'결과 대기', done_full:'완료',
@@ -1825,9 +1831,20 @@
       // hasFatigueTargets는 컨디션 체크에서 "안 좋음"이라고 답했을 때(또는 "적극적으로" 성향이
       // 객관적으로 일정 과다를 감지했을 때)만 true라서, 제안이 뜨는 것 자체가 이미 근거가 있는
       // 상황이에요.
-      if(showActions && !ui.briefingDismissed && hasFatigueTargets && (!hasOverlaps || ui.overlapDismissed)){
+      var autoCtaShown = showActions && !ui.briefingDismissed && hasFatigueTargets && (!hasOverlaps || ui.overlapDismissed);
+      if(autoCtaShown){
         html += '<button class="reschedule-cta" onclick="appAction(\'openEnergyAdjustment\')">✨ 오늘 일정 다시 짜기</button>';
         html += '<button class="btn btn-ghost" style="margin-top:8px;" onclick="appAction(\'dismissBriefingAction\')">그대로 진행하기</button>';
+      } else {
+        // 자동 제안은 컨디션 체크에서 "안 좋음"이라고 직접 답했을 때만 나가요 — 체크인을
+        // 안 했다고 "일정 조정하기" 자체를 못 찾게 되면 안 되니, 언제든 직접 눌러서 수동
+        // 선택·AI 요청으로 갈 수 있는 입구를 늘 남겨둬요(비서 성향과 무관하게 항상 보여요 —
+        // 이건 먼저 나서는 제안이 아니라 사용자가 직접 누르는 버튼이라서요).
+        var manualAdjustable = computeManualAdjustOptions(dateKey, now);
+        var hasManualTargets = manualAdjustable.withMinVersion.length>0 || manualAdjustable.withoutMinVersion.length>0;
+        if(hasManualTargets && (!hasOverlaps || ui.overlapDismissed)){
+          html += '<button class="btn btn-ghost" style="margin-top:4px;" onclick="appAction(\'chatOpenFatigue\')">일정 조정하기</button>';
+        }
       }
     }
 
@@ -2704,8 +2721,8 @@
     return html;
   }
   function settingsSectionHeader(section){
-    return '<div style="display:flex; align-items:center; gap:8px; margin:14px 0 4px;">' +
-      '<button class="cal-nav-btn" onclick="appAction(\'closeSettingsSection\')">‹</button>' +
+    return '<div style="display:flex; align-items:center; gap:2px; margin:14px 0 4px;">' +
+      '<button class="back-btn" onclick="appAction(\'closeSettingsSection\')" aria-label="뒤로">'+iconChevronLeft()+'</button>' +
       '<div class="section-title" style="margin:0;">'+esc(SETTINGS_SECTION_TITLE[section])+'</div></div>';
   }
   function renderSettingsSection(section){
@@ -2810,32 +2827,27 @@
   }
   function renderRoutineModal(){
     var r = state.settings.routine;
-    // "월~금"처럼 여러 요일을 한 번에 고를 수 있어요 — 고른 요일은 전부 같은 시간으로 맞춰요.
+    // v49: "요일마다 다르게 설정" on/off 토글이 굳이 필요 없다는 피드백으로 없앴어요 — 이제
+    // 항상 요일별로 설정할 수 있어요(요일을 하나만 고르면 그 요일만, 다 고르면 매일 같아져요).
     var days = ui.routineEditDays.slice().sort(function(a,b){ return a-b; });
     var repDay = days[0];
     var daysLabel = formatSelectedDaysLabel(days);
-    var body = '<div class="section-sub" style="margin-top:0;">매일 꼭 오는 필수 알림이에요 — 시간만 조절할 수 있어요.</div>';
+    var body = '<div class="section-sub" style="margin-top:0;">매일 꼭 오는 필수 알림이에요 — 시간만 조절할 수 있어요. 요일을 여러 개 골라(예: 월~금) 그 요일들만 같은 시간으로 맞출 수 있어요.</div>';
 
-    body += '<div class="settings-row"><div><div class="t">요일마다 다르게 설정</div>' +
-      '<div class="d">꺼두면 매일 같은 시간이에요. 켜면 요일을 여러 개 골라(예: 월~금) 그 요일들만 다른 기상·취침 시간을 정할 수 있어요(주말엔 더 늦게 등).</div></div>' +
-      toggleTrack(r.perWeekday, "appAction('toggleRoutinePerWeekday')")+'</div>';
-
-    if(r.perWeekday){
-      body += '<div class="preset-row" style="justify-content:flex-start; margin-top:10px;">';
-      WEEKDAY_LABELS.forEach(function(lbl,d){
-        body += chip(lbl, days.indexOf(d)!==-1, "appAction('toggleRoutineEditDay',"+d+")");
-      });
-      body += '</div>';
-    }
+    body += '<div class="preset-row" style="justify-content:flex-start; margin-top:0;">';
+    WEEKDAY_LABELS.forEach(function(lbl,d){
+      body += chip(lbl, days.indexOf(d)!==-1, "appAction('toggleRoutineEditDay',"+d+")");
+    });
+    body += '</div>';
 
     var wt = parseHM(r.wakeTimes[repDay]);
-    body += '<div class="settings-row"><div><div class="t">기상 알림 + 컨디션 체크'+(r.perWeekday?' · '+daysLabel:'')+'</div>' +
+    body += '<div class="settings-row"><div><div class="t">기상 알림 + 컨디션 체크 · '+daysLabel+'</div>' +
       '<div class="d">기상 시간에 알림으로 오늘 컨디션을 확인하고, 가벼운 스트레칭과 함께 오늘 일정을 바로 브리핑해줘요.</div></div></div>';
     body += '<div class="routine-expand"><div class="stepper-row">'+stepperHtml('기상 시간', meridiemTimeLabel(wt.hour,wt.minute), "appAction('routineTimeStep','wake',-30)", "appAction('routineTimeStep','wake',30)")+'</div>';
     body += '<button class="btn btn-secondary" onclick="appAction(\'previewWakeRoutine\')">지금 컨디션 체크해보기</button></div>';
 
     var st = parseHM(r.sleepTimes[repDay]);
-    body += '<div class="settings-row"><div><div class="t">취침 알림 + 내일 일정 미리보기'+(r.perWeekday?' · '+daysLabel:'')+'</div>' +
+    body += '<div class="settings-row"><div><div class="t">취침 알림 + 내일 일정 미리보기 · '+daysLabel+'</div>' +
       '<div class="d">취침 시간에 알림으로 내일 일정을 미리 알려줘요.</div></div></div>';
     body += '<div class="routine-expand"><div class="stepper-row">'+stepperHtml('취침 시간', meridiemTimeLabel(st.hour,st.minute), "appAction('routineTimeStep','sleep',-30)", "appAction('routineTimeStep','sleep',30)")+'</div>';
     body += '<button class="btn btn-secondary" onclick="appAction(\'previewSleepRoutine\')">지금 미리보기</button></div>';
@@ -3138,16 +3150,10 @@
         var rhm = parseHM(state.settings.routine[rkey][rRepDay]);
         var rtotal = ((rhm.hour*60+rhm.minute+args[1]) % 1440 + 1440) % 1440;
         var rnewVal = formatHM(Math.floor(rtotal/60), rtotal%60);
-        if(state.settings.routine.perWeekday){
-          // 선택된(여러 개일 수 있는) 요일 전부를 같은 값으로 맞춰요.
-          ui.routineEditDays.forEach(function(rwd){ state.settings.routine[rkey][rwd] = rnewVal; });
-        } else {
-          // 요일마다 다르게 설정이 꺼져 있으면 7일 전부 같은 값으로 맞춰요.
-          for(var rwd2=0; rwd2<7; rwd2++) state.settings.routine[rkey][rwd2] = rnewVal;
-        }
+        // 선택된(여러 개일 수 있는) 요일 전부를 같은 값으로 맞춰요.
+        ui.routineEditDays.forEach(function(rwd){ state.settings.routine[rkey][rwd] = rnewVal; });
         break;
       }
-      case 'toggleRoutinePerWeekday': state.settings.routine.perWeekday = !state.settings.routine.perWeekday; break;
       case 'toggleRoutineEditDay': {
         var dIdx = ui.routineEditDays.indexOf(args[0]);
         if(dIdx!==-1){
