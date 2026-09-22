@@ -10,8 +10,8 @@ HTML/CSS/JS, 빌드 도구 없음)로 돼 있어서 브라우저에서 바로 �
   Capacitor 앱 양쪽에 다 반영돼요.
 - `server/` — 비서 채팅이 실제 LLM(Claude)과 대화하게 해주는 작은 백엔드. 배포 방법은
   `server/README.md` 참고.
-- `capacitor.config.json`, `package.json`, `scripts/build.js` — Android 앱으로 감싸기
-  위한 설정. 아래 "Android 앱으로 빌드하기" 참고.
+- `capacitor.config.json`, `package.json`, `scripts/build.js`, `scripts/build-apk.js` —
+  Android 앱으로 감싸기 위한 설정. 아래 "Android 앱으로 빌드하기" 참고.
 - `NOTIFICATIONS.md`, `CALENDAR_SYNC.md` — 실제 기기 전환 시 남은 작업 체크리스트.
 
 ## 브라우저에서 바로 열어보기
@@ -65,6 +65,37 @@ npx cap open android
 
 Android Studio가 열리면 연결된 기기나 에뮬레이터를 골라서 ▶(Run) 버튼을 누르면
 앱이 설치·실행돼요. (`npm run android`으로 sync + open을 한 번에 해도 돼요.)
+
+**중요**: 2~4단계 중 Android Studio로 프로젝트를 최소 한 번은 열어봐야 해요. 그래야
+Android Studio가 `android/local.properties`에 SDK 경로(`sdk.dir`)를 자동으로 채워주는데,
+이게 없으면 아래 5단계처럼 터미널만으로 빌드할 때 "SDK를 못 찾겠다"는 에러가 나요.
+
+### 5. 설치 파일(APK)만 바로 받고 싶을 때
+
+Android Studio를 매번 열지 않고, 터미널 명령 하나로 설치 가능한 **디버그 APK**를
+바로 뽑아낼 수 있어요(2~4단계로 한 번 열어본 뒤부터 사용 가능):
+
+```bash
+npm run apk
+```
+
+`index.html`을 `www/`에 동기화하고, Gradle로 디버그 APK를 빌드해요(처음 한 번은
+Gradle이 관련 파일을 내려받느라 몇 분 걸릴 수 있어요). 끝나면 아래 경로에 설치 파일이
+생겨요:
+
+```
+android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+이 파일은 안드로이드 기본 "디버그 서명"으로 이미 서명돼 있어서, 추가 서명 없이 바로
+기기에 설치해서 테스트할 수 있어요(플레이 스토어에는 이 방식으로 못 올려요 — 스토어
+출시는 별도 릴리즈 서명이 필요한 나중 단계예요). 설치 방법은 둘 중 편한 쪽으로:
+
+- **USB로 연결한 기기에 바로 설치**: 기기에서 USB 디버깅을 켠 뒤
+  `adb install -r android/app/build/outputs/apk/debug/app-debug.apk`
+- **파일로 옮겨서 설치**: 위 `app-debug.apk` 파일을 카카오톡/이메일/USB 등으로 폰에
+  옮긴 뒤 파일을 눌러서 설치해요(안드로이드가 "출처를 알 수 없는 앱" 설치를 허용할지
+  물어보면 허용해주면 돼요).
 
 ### 비서 LLM(AI 채팅) 테스트하기
 
