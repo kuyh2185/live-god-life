@@ -474,6 +474,10 @@
       { id:'ev2-'+TKm2, refId:'ev2', kind:'session', dateKey:TKm2, status:'skipped', reason:null }
     ],
     eventOccurrenceOverrides: {},
+    // 오늘 컨디션 체크인 — dateKey별로 {energy, availableMinutes, mustDoId, mustDoLabel, burden, at}.
+    // 하루 1~2번, 선택 항목 위주로 가볍게 받아서 "피곤해요" 제안을 규칙 기반이 아니라
+    // 실제 상황 기반으로 만들어요.
+    checkins: {},
     changeLog: [
       { id:'seed1', label:'"아침 운동" 오늘 시간 조정', at:new Date(Date.now()-1000*60*40).toISOString(), undone:false, undo:function(){} }
     ],
@@ -482,6 +486,9 @@
       checkinTiming:'after_end',
       voice:{ ttsEnabled:true, autoSpeak:false, rate:1 },
       primaryGoal:null,
+      // 장기 목표를 매번 잘게 쪼개진 않지만, 최소한 "이번 주엔 이거 하나"를 스스로 적어두면
+      // 오늘 무엇을 지킬지 판단 기준이 생겨요(목표 계층의 가장 가벼운 버전).
+      weeklyFocus:null,
       // 기상했을 때 알람+스트레칭 유도+오늘 브리핑, 취침 시 내일 일정 미리보기 — 둘 다 기본은 꺼둔
       // 선택 기능이에요(예전 리뷰에서 "운동 전용처럼 보이는 강제 미션"은 빼기로 했던 것과는 달리,
       // 이건 특정 운동을 강요하지 않는 일반적인 아침/저녁 루틴 알림이라 이 앱의 정체성과 어울려요).
@@ -523,6 +530,7 @@
     // v40: 겹침 해결과 컨디션 조정을 별개의 모달/흐름으로 분리했어요(기존엔 둘 다 ui.fatigue 하나였어요).
     overlap:null, overlapDismissed:false,
     energy:null,
+    checkin:null, insightDismissedIds:{},
     onboardingDone:false, onboardingStep:0,
     chatOpen:false, chat:null,
     historyMonthOffset:0, historySelectedDate:null,
@@ -615,7 +623,10 @@
     var totalMinutes = rows.reduce(function(s,r){ return s+r.duration; }, 0);
     // 남은 일정 기준으로만 문구를 만들어요 (전체 개수/시간이 섞이면 앞뒤가 안 맞는 문구가 돼요).
     var remainingMinutes = remaining.reduce(function(s,r){ return s+r.duration; }, 0);
-    var busy = rows.length >= 5 || totalMinutes >= 360 || overlapCount > 0;
+    // 체크인에서 "에너지 낮음"이라고 답했으면, 일정 개수·시간이 평소만큼이어도 오늘은
+    // 재계획을 먼저 제안해요 — 규칙(개수·시간)만이 아니라 실제 상태를 반영하기 위해서예요.
+    var checkin = state.checkins[dateKey];
+    var busy = rows.length >= 5 || totalMinutes >= 360 || overlapCount > 0 || (checkin && checkin.energy==='low');
     var headline;
     if(rows.length === 0) headline = '오늘 등록된 일정이 없어요. 새 일정을 추가하거나 편하게 쉬어도 좋아요.';
     else if(remaining.length === 0) headline = '오늘 남은 일정이 없어요. 수고 많으셨어요.';
@@ -765,6 +776,13 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function(){ ui.toast = null; render(); }, 5000);
   }
+  // 되돌릴 변경이 없는 단순 안내용 토스트(예: "아직 준비 중이에요") — 되돌리기 버튼 없이 짧게 보여줘요.
+  function showInfoToast(label){
+    ui.toast = {id:null, label:label, info:true};
+    render();
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ ui.toast = null; render(); }, 3000);
+  }
 
   function addRecurringEvent(input){
     var id = uid('ev');
@@ -856,6 +874,11 @@
   var PARTIAL_DEGREE_LABEL = { half:'절반 정도 했어요', started:'시작만 했어요', mini_done:'가볍게 버전은 했어요' };
   var REASON_LABEL = { no_time:'시간이 없었어요', too_tired:'너무 피곤했어요', forgot:'깜빡했어요',
     no_longer_needed:'더 이상 필요 없어요', custom:'직접 입력' };
+  // 오늘 컨디션 체크인 옵션 — 하루 1~2번, 대부분 선택만 하면 되는 가벼운 항목들이에요.
+  var ENERGY_OPTIONS = [['low','에너지 낮음'],['mid','에너지 보통'],['high','에너지 높음']];
+  var ENERGY_LABEL = { low:'에너지 낮음', mid:'에너지 보통', high:'에너지 높음' };
+  var BURDEN_OPTIONS = [['light','가벼워요'],['normal','보통이에요'],['heavy','버거워요']];
+  var AVAILABLE_MIN_PRESETS = [30,60,120,180];
 
   function renderPhone(){
     if(!ui.onboardingDone) return renderOnboarding();
@@ -889,13 +912,14 @@
     html += '</div>';
 
     if(ui.toast) html += '<div class="toast-wrap"><div class="toast"><span>'+esc(ui.toast.label)+'</span>' +
-      '<button onclick="appRunUndo(\''+ui.toast.id+'\')">되돌리기</button></div></div>';
+      (ui.toast.info ? '' : '<button onclick="appRunUndo(\''+ui.toast.id+'\')">되돌리기</button>') + '</div></div>';
 
     if(!ui.chatOpen) html += '<button class="chat-fab" onclick="appAction(\'openChat\')" title="일정 챗봇">💬</button>';
 
     if(ui.sheet) html += renderEntrySheetModal();
     if(ui.overlap) html += renderOverlapModal();
     if(ui.energy) html += renderEnergyModal();
+    if(ui.checkin) html += renderCheckinModal();
     if(ui.quickAdd) html += renderQuickAddModal();
     if(ui.form) html += renderFormModal();
     if(ui.confirm) html += renderConfirmModal();
@@ -1485,9 +1509,25 @@
 
     if(briefing){
       html += '<div class="greet-card">' +
-        '<div class="greet-text"><div class="h1">좋은 하루예요</div><div class="sub">오늘도, 차근차근 해봐요!</div></div>' +
+        '<div class="greet-text"><div class="h1">좋은 하루예요</div><div class="sub">완벽한 계획보다, 다시 이어가는 하루</div></div>' +
         '<div class="greet-mascot-col"><div class="greet-bubble">'+esc(briefing.headline)+'</div>'+mascotSvg(48)+'</div>' +
         '</div>';
+      if(state.settings.weeklyFocus){
+        html += '<div class="section-sub" style="margin:-2px 0 12px;">🎯 이번 주 핵심 행동: '+esc(state.settings.weeklyFocus)+'</div>';
+      }
+      var todayCheckin = state.checkins[dateKey];
+      if(todayCheckin){
+        var checkinSummary = ENERGY_LABEL[todayCheckin.energy] +
+          (todayCheckin.availableMinutes ? ' · 가능 시간 '+formatDurationHM(todayCheckin.availableMinutes) : '') +
+          (todayCheckin.mustDoLabel ? ' · 꼭 할 일: '+esc(todayCheckin.mustDoLabel) : '');
+        html += '<div class="next-up-bar" style="cursor:pointer;" onclick="appAction(\'openCheckin\')"><span class="dot"></span>'+checkinSummary+' · 다시 체크하기</div>';
+      } else {
+        html += '<div class="section-sub" style="margin-top:-2px;">오늘 컨디션을 알려주시면 제안을 더 정확히 맞춰드려요.</div>';
+        html += '<div class="preset-row" style="margin-bottom:10px;">';
+        ENERGY_OPTIONS.forEach(function(o){ html += chip(o[1], false, "appAction('checkinQuickEnergy','"+o[0]+"')", true); });
+        html += chip('자세히 입력', false, "appAction('openCheckin')", true);
+        html += '</div>';
+      }
     }
 
     if(needsResult.length>0){
@@ -1706,7 +1746,9 @@
         s.withMinVersion.forEach(function(item){ totalReduced += Math.max(0, item.duration - item.miniDuration); });
         s.withoutMinVersion.forEach(function(item){ totalReduced += item.duration; });
 
-        body += '<div class="sheet-sub" style="margin-top:0;">이번 제안으로 바뀌는 일정 '+changeLines.length+'개</div>';
+        var reasonBriefing = computeBriefing(dateKey, new Date());
+        var reasonCheckin = state.checkins[dateKey];
+        body += '<div class="sheet-sub" style="margin-top:0;">'+buildAdjustReason(dateKey, reasonBriefing, reasonCheckin, changeLines.length, totalReduced)+'</div>';
         body += '<div class="change-summary">';
         changeLines.forEach(function(line){ body += '<div class="change-line">'+line+'</div>'; });
         body += '</div>';
@@ -1745,6 +1787,47 @@
     body += '<button class="btn btn-ghost" style="margin-top:14px;" onclick="appAction(\'energyClose\')">닫기</button>';
     return '<div class="overlay" onclick="appAction(\'energyClose\')"><div class="sheet" onclick="event.stopPropagation()">' +
       '<div class="sheet-title">오늘 좀 피곤하시군요</div>'+body+'</div></div>';
+  }
+
+  // 자동조정이 왜 이렇게 제안됐는지 한 줄로 설명해요 — 근거 없이 "줄일게요"만 보여주면
+  // 신뢰하기 어렵다는 피드백을 반영했어요. 오늘 체크인(에너지)·브리핑(개수·시간)·최근 실패
+  // 패턴 중 있는 근거를 골라 조합해요.
+  function buildAdjustReason(dateKey, briefing, checkin, changeCount, totalReducedMinutes){
+    var parts = [];
+    if(checkin && checkin.energy==='low') parts.push('오늘 에너지가 낮다고 하셨고');
+    else if(briefing.busy) parts.push('오늘 남은 일정이 '+briefing.remainingCount+'개, 총 '+formatDurationHM(briefing.remainingMinutes)+'라 빠듯해서');
+    var insight = computeRecurringInsight();
+    if(insight) parts.push('"'+esc(insight.event.label)+'"을 최근 자주 못 지켰던 것도 고려해서');
+    return (parts.length ? parts.join(', ') : '오늘 상황을 고려해서') +
+      ' '+changeCount+'개 일정을 줄이거나 제외하고, 부담을 '+formatDurationHM(totalReducedMinutes)+' 덜어드리려고 해요.';
+  }
+
+  // ── 오늘 컨디션 체크인 시트 ──
+  function renderCheckinModal(){
+    var c = ui.checkin;
+    var dateKey = todayKey();
+    var candidateRows = buildTimetableForDate(dateKey).filter(function(r){ return !r.isFixed; });
+    var body = '<div class="sheet-sub" style="margin-bottom:6px;">답한 내용은 오늘 제안에만 참고하고, 다 채우지 않아도 괜찮아요.</div>';
+    body += '<div class="field-label" style="margin-top:10px;">지금 에너지는요?</div><div class="preset-row">';
+    ENERGY_OPTIONS.forEach(function(o){ body += chip(o[1], c.energy===o[0], "appAction('checkinSetEnergy','"+o[0]+"')"); });
+    body += '</div>';
+    body += '<div class="field-label">오늘 쓸 수 있는 시간은요? (선택)</div><div class="preset-row">';
+    AVAILABLE_MIN_PRESETS.forEach(function(m){ body += chip(formatDurationHM(m), c.availableMinutes===m, "appAction('checkinSetAvailable',"+m+")", true); });
+    body += '</div>';
+    body += '<div class="field-label">오늘 꼭 해야 하는 일 하나는요? (선택)</div>';
+    if(candidateRows.length===0){
+      body += '<div class="section-sub" style="margin-top:0;">오늘 등록된 일정이 없어요.</div>';
+    } else {
+      body += '<div class="preset-row">';
+      candidateRows.forEach(function(r){ body += chip(r.label, c.mustDoId===r.entryId, "appAction('checkinSetMustDo','"+r.entryId+"')", true); });
+      body += '</div>';
+    }
+    body += '<div class="field-label">지금 부담은 얼마나 되나요? (선택)</div><div class="preset-row">';
+    BURDEN_OPTIONS.forEach(function(o){ body += chip(o[1], c.burden===o[0], "appAction('checkinSetBurden','"+o[0]+"')"); });
+    body += '</div>';
+    body += '<div style="margin-top:16px;">'+btn('저장', 'primary', "appAction('checkinSave')")+btn('취소', 'ghost', "appAction('checkinClose')")+'</div>';
+    return '<div class="overlay" onclick="appAction(\'checkinClose\')"><div class="sheet" onclick="event.stopPropagation()">' +
+      '<div class="sheet-title">오늘 컨디션 체크</div>'+body+'</div></div>';
   }
 
   // ── 오늘 기록 SNS 공유 — 이미지 카드를 만들어서 인스타그램 스토리/카카오톡/X 등에 공유해요.
@@ -2066,6 +2149,27 @@
     Object.keys(counts).forEach(function(k){ if(counts[k]>bestCount){ best = k; bestCount = counts[k]; } });
     return bestCount>=2 ? best : null;
   }
+  // 최근 14일 동안 특정 반복 일정을 절반 이상 "못함/건너뜀"으로 기록했으면, 그 패턴을
+  // 다음 계획에 반영할 수 있게 알려줘요(시간대를 옮기거나, 가볍게 버전을 아예 기본으로).
+  // "미리 건너뜀"(비서가 먼저 뺀 것)은 사용자 실패가 아니라 분모에서도 빼요.
+  function computeRecurringInsight(){
+    var days = []; var cursor = todayKey();
+    for(var i=0;i<14;i++){ days.push(cursor); cursor = addDaysKey(cursor,-1); }
+    var best = null;
+    state.events.forEach(function(ev){
+      if(ev.paused) return;
+      var total = 0, fail = 0;
+      days.forEach(function(dk){
+        if(ev.days.indexOf(weekdayOfKey(dk))===-1) return;
+        var entry = findScheduleEntry(ev.id+'-'+dk);
+        if(!entry || entry.status==='excused') return;
+        total++;
+        if(entry.status==='skipped' || entry.status==='done_none') fail++;
+      });
+      if(total>=3 && fail/total>=0.5 && (!best || fail>best.fail)) best = {event:ev, fail:fail, total:total};
+    });
+    return best;
+  }
   function formatKoreanDate(dk){
     var p = dk.split('-').map(Number);
     var wd = WEEKDAY_LABELS[new Date(p[0],p[1]-1,p[2]).getDay()];
@@ -2168,6 +2272,21 @@
     }
     html += '</div>';
 
+    // 실패 기록을 다음 계획에 반영 — 최근 절반 이상 못 지킨 반복 일정이 있으면, 그냥 보여주기만
+    // 하지 않고 "시간 옮기기" · "가볍게를 기본으로" 두 가지 실제 행동으로 바로 연결해요.
+    var insight = computeRecurringInsight();
+    if(insight && !ui.insightDismissedIds[insight.event.id]){
+      html += '<div class="section-title">비서가 발견한 패턴</div>';
+      html += '<div class="overlap-card" style="background:var(--warn-bg);">' +
+        '<div class="oc-title" style="color:var(--warn);">"'+esc(insight.event.label)+'"을 최근 '+insight.total+'번 중 '+insight.fail+'번 못 지켰어요</div>' +
+        '<div class="oc-detail" style="color:var(--warn);">시간을 옮기거나, 가볍게 버전을 기본으로 바꿔볼까요?</div>' +
+        '<div class="oc-actions">' +
+        '<button class="btn-oc-primary" style="background:var(--warn);" onclick="appAction(\'insightEditTime\',\''+insight.event.id+'\')">시간 옮기기</button>' +
+        (insight.event.minVersion ? '<button class="btn-oc-primary" style="background:var(--warn);" onclick="appAction(\'insightApplyMinDefault\',\''+insight.event.id+'\')">가볍게를 기본으로</button>' : '') +
+        '<button class="btn-oc-ghost" style="color:var(--warn);" onclick="appAction(\'insightDismiss\',\''+insight.event.id+'\')">넘어갈게요</button>' +
+        '</div></div>';
+    }
+
     // 기본은 접어둬요 — 눌러야 열리는 아코디언. 평소엔 눈에 안 띄다가, 궁금할 때만 펼쳐볼 수 있게.
     html += '<button class="section-title" style="display:flex; align-items:center; justify-content:space-between; width:100%; ' +
       'background:none; border:none; padding:0; cursor:pointer; color:var(--text); font-family:inherit;" ' +
@@ -2205,6 +2324,15 @@
       html += chip(o[1], state.settings.primaryGoal===o[0], "appAction('setPrimaryGoal','"+o[0]+"')");
     });
     html += '</div>';
+
+    html += '<div class="section-title">이번 주 핵심 행동</div><div class="section-sub">장기 목표를 이번 주 실행 가능한 한 가지로 좁혀두면, 오늘 무엇을 지킬지 더 명확해져요.</div>';
+    html += '<input class="textfield" value="'+esc(state.settings.weeklyFocus||'')+'" placeholder="예: 토익 단어 매일 30개씩 외우기" oninput="appAction(\'setWeeklyFocus\',this.value)"/>';
+
+    html += '<div class="section-title">외부 캘린더</div><div class="section-sub">일정을 두 번 입력하지 않아도 되게, 외부 일정을 가져와 고정 일정으로 표시할 예정이에요. 지금은 프로토타입이라 미리보기만 가능해요.</div>';
+    html += '<div class="settings-row"><div><div class="t">Google 캘린더 가져오기</div><div class="d">캘린더에 있는 일정을 그대로 불러와요.</div></div>' +
+      '<button class="btn btn-secondary" style="width:auto; padding:8px 14px; margin-bottom:0;" onclick="appAction(\'externalCalendarStub\')">준비 중</button></div>';
+    html += '<div class="settings-row"><div><div class="t">학교 시간표 가져오기</div><div class="d">강의계획표 사진이나 파일로 한 번에 등록해요.</div></div>' +
+      '<button class="btn btn-secondary" style="width:auto; padding:8px 14px; margin-bottom:0;" onclick="appAction(\'externalCalendarStub\')">준비 중</button></div>';
 
     html += '<div class="section-title">음성</div>';
     html += '<div class="settings-row"><div><div class="t">음성 안내 사용</div><div class="d">비서 응답을 소리로 들려줘요.</div></div>' +
@@ -2358,6 +2486,47 @@
         ui.energy = null; break;
       }
 
+      // ── 오늘 컨디션 체크인 ──
+      case 'checkinQuickEnergy': {
+        var dkQ = todayKey();
+        state.checkins[dkQ] = Object.assign({}, state.checkins[dkQ], {energy: args[0], at: new Date().toISOString()});
+        break;
+      }
+      case 'openCheckin': {
+        var dkO = todayKey();
+        var prevC = state.checkins[dkO] || {};
+        ui.checkin = { energy: prevC.energy || 'mid', availableMinutes: prevC.availableMinutes || null,
+          mustDoId: prevC.mustDoId || null, burden: prevC.burden || null };
+        break;
+      }
+      case 'checkinClose': ui.checkin = null; break;
+      case 'checkinSetEnergy': ui.checkin.energy = args[0]; break;
+      case 'checkinSetAvailable': ui.checkin.availableMinutes = args[0]; break;
+      case 'checkinSetMustDo': ui.checkin.mustDoId = args[0]; break;
+      case 'checkinSetBurden': ui.checkin.burden = args[0]; break;
+      case 'checkinSave': {
+        var dkS = todayKey();
+        var mustDoLabel = null;
+        if(ui.checkin.mustDoId){
+          var mrow = buildTimetableForDate(dkS).find(function(r){ return r.entryId===ui.checkin.mustDoId; });
+          if(mrow) mustDoLabel = mrow.label;
+        }
+        state.checkins[dkS] = Object.assign({}, ui.checkin, {mustDoLabel: mustDoLabel, at: new Date().toISOString()});
+        ui.checkin = null; break;
+      }
+
+      // ── 실패 패턴 인사이트 ──
+      case 'insightDismiss': ui.insightDismissedIds[args[0]] = true; break;
+      case 'insightEditTime': {
+        ui.tab = 'schedule'; ui.scheduleTab = 'recurring';
+        openForm('session', args[0]); break;
+      }
+      case 'insightApplyMinDefault': {
+        var evI = state.events.find(function(e){ return e.id===args[0]; });
+        if(evI && evI.minVersion) updateRecurringEvent(evI.id, {label: evI.minVersion, duration: computeMiniDuration(evI.duration), minVersion: null});
+        ui.insightDismissedIds[args[0]] = true; break;
+      }
+
       case 'openQuickAdd': ui.quickAdd = {label:'', time:'09:00', duration:30, dateKey:curDateKey()}; break;
       case 'quickAddClose': ui.quickAdd = null; break;
       case 'quickAddLabel': ui.quickAdd.label = args[0]; return;
@@ -2432,6 +2601,8 @@
 
       case 'setIntervention': state.settings.interventionLevel = args[0]; break;
       case 'setPrimaryGoal': state.settings.primaryGoal = args[0]; break;
+      case 'setWeeklyFocus': state.settings.weeklyFocus = args[0]; return;
+      case 'externalCalendarStub': showInfoToast('실제 앱에서 연동할 예정이에요. 지금은 프로토타입이라 미리보기만 가능해요.'); return;
       case 'toggleRoutine': state.settings.routine[args[0]] = !state.settings.routine[args[0]]; break;
       case 'routineTimeStep': {
         var rkey = args[0]==='wake' ? 'wakeTime' : 'sleepTime';
@@ -2593,7 +2764,7 @@
 
   // 1분마다 시계 갱신 — 열려있는 시트가 없을 때만 다시 그려서, 조작 중인 모달이 리셋되지 않게 해요.
   setInterval(function(){
-    if(!ui.sheet && !ui.overlap && !ui.energy && !ui.quickAdd && !ui.form) render();
+    if(!ui.sheet && !ui.overlap && !ui.energy && !ui.checkin && !ui.quickAdd && !ui.form) render();
   }, 60000);
 
   render();
