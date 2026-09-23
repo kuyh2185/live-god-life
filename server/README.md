@@ -31,27 +31,42 @@
 
 ## 1. Render.com에서 새 Web Service 만들기
 
+저장소 루트에 `render.yaml`(Blueprint 설정)을 이미 넣어뒀어요 — Name/Root
+Directory/Build·Start Command를 손으로 입력할 필요 없이, Render가 이 파일을
+읽어서 자동으로 채워줘요. `APP_SHARED_SECRET`도 Render가 알아서 안전한 무작위
+값으로 만들어줘요(직접 문자열을 지어낼 필요 없어요).
+
 1. https://render.com 가입/로그인 (GitHub 계정으로 바로 가입 가능해요).
-2. 대시보드에서 **New +** → **Web Service** 클릭.
-3. 방금 올린 GitHub 저장소(godsaeng-app)를 선택하고 연결을 승인해요.
-4. 아래 값들을 입력해요.
+2. 대시보드에서 **New +** → **Blueprint** 클릭.
+3. 이 GitHub 저장소(`live-god-life`)를 선택하고 연결을 승인해요. Render가
+   `render.yaml`을 자동으로 찾아서 서비스 구성을 미리 보여줘요.
+4. `ANTHROPIC_API_KEY` 항목만 직접 값을 채워요(아까 복사해 둔 `sk-ant-...` 키).
+   나머지(`ANTHROPIC_MODEL`, `APP_SHARED_SECRET`)는 이미 채워져 있어요.
+5. **Apply**(또는 **Create New Resources**) 클릭. 2~3분 정도 빌드/배포가 진행돼요.
+6. 배포가 끝나면 서비스 화면 위쪽에 `https://godsaeng-assistant.onrender.com`
+   같은 주소가 보여요. 이 주소를 복사해두세요 — 앱 설정 화면의 "AI 서버
+   주소"에 그대로 붙여넣을 거예요.
+7. 서비스의 **Environment** 탭에서 자동 생성된 `APP_SHARED_SECRET` 값을
+   복사해두세요 — 앱 설정의 "서버 비밀키"에 그대로 붙여넣을 거예요.
+
+### Blueprint 없이 수동으로 만들고 싶다면
+
+1. 대시보드에서 **New +** → **Web Service** 클릭.
+2. 저장소를 선택하고 연결을 승인해요.
+3. 아래 값들을 입력해요.
    - **Name**: `godsaeng-assistant` (원하는 이름 아무거나)
    - **Root Directory**: `server`  ← 반드시 `server` 폴더를 지정해야 해요.
    - **Runtime**: `Node`
    - **Build Command**: `npm install`
    - **Start Command**: `npm start`
    - **Instance Type**: `Free`
-5. **Environment Variables** 섹션에서 "Add Environment Variable"을 눌러
-   아래 세 개를 추가해요.
+4. **Environment Variables** 섹션에서 아래 세 개를 추가해요.
    | Key | Value |
    |---|---|
    | `ANTHROPIC_API_KEY` | 아까 복사해 둔 `sk-ant-...` 키 |
    | `ANTHROPIC_MODEL` | `claude-haiku-4-5-20251001` |
    | `APP_SHARED_SECRET` | 아무 긴 문자열(예: `godsaeng-2026-secret-xyz`) — 앱 설정 화면에도 나중에 똑같이 입력해요 |
-6. **Create Web Service** 클릭. 2~3분 정도 빌드/배포가 진행돼요.
-7. 배포가 끝나면 화면 위쪽에 `https://godsaeng-assistant.onrender.com` 같은
-   주소가 보여요. 이 주소를 복사해두세요 — 앱 설정 화면의 "AI 서버 주소"에
-   그대로 붙여넣을 거예요.
+5. **Create Web Service** 클릭.
 
 ## 2. 서버가 잘 떴는지 확인하기
 
