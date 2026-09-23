@@ -185,10 +185,12 @@
   /* 시:분을 하나의 −/+로 같이 조절하던 걸, 시와 분을 각자 위/아래 화살표로 따로 조절하게 바꾼
      스테퍼예요(요청: "시간과 분에 모두 위 아래로 화살표가 있어서 그걸 누르면 변경되게"). */
   .time-dual-row{display:flex; justify-content:center; align-items:flex-end; gap:22px; margin-top:6px;}
-  .time-dual-col{display:flex; flex-direction:column; align-items:center; gap:5px;}
+  .time-dual-col{display:flex; flex-direction:column; align-items:center; gap:4px;}
   .time-dual-col .unit-lbl{font-size:11px; color:var(--text-muted);}
-  .time-dual-arrow{width:40px; height:26px; border-radius:9px; background:var(--chip-bg);
-    border:none; font-size:12px; font-weight:700; color:var(--text); cursor:pointer;
+  /* 달력 이전/다음 달 버튼(.cal-nav-btn)과 같은 크기의 작은 원형 버튼으로 맞췄어요 — 처음엔
+     40x26 네모라 다른 아이콘 버튼들보다 눈에 띄게 컸어요. */
+  .time-dual-arrow{width:26px; height:26px; border-radius:999px; background:var(--chip-bg);
+    border:none; font-size:10px; font-weight:700; color:var(--text); cursor:pointer;
     display:flex; align-items:center; justify-content:center;}
   .time-dual-val{min-width:64px; text-align:center; font-size:16px; font-weight:700; font-variant-numeric:tabular-nums;}
   .preset-row{display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin-top:12px;}
