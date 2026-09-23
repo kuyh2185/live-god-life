@@ -356,10 +356,9 @@
   .cal-cell.selected{border-color:var(--accent);}
   .cal-cell.today{box-shadow:0 0 0 1.5px var(--accent) inset;}
   .cal-cell.full::after{content:'✓'; position:absolute; top:4px; right:5px; font-size:9px;}
-  /* "빨간날"(일요일·공휴일) 표시 — 채워진 칸은 이행률 배경색이 이미 있어서 글자색을 빨갛게
-     바꾸면 배경과 부딪힐 수 있어, 대신 왼쪽 위에 작은 빨간 점으로 표시해요. */
-  .cal-cell.holiday::before{content:''; position:absolute; top:5px; left:5px; width:5.5px; height:5.5px;
-    border-radius:50%; background:var(--danger);}
+  /* "빨간날"(일요일·공휴일) 표시 — 숫자 자체를 빨간색으로. 이행률로 채워진 칸은 그 배경색에
+     맞춘 글자색(인라인 style)이 이 클래스보다 우선 적용되니 자연스럽게 덮어써요. */
+  .cal-cell.holiday{color:var(--danger);}
   .cal-legend{display:flex; align-items:center; gap:6px; margin-top:10px; font-size:10.5px; color:var(--text-faint);}
   .cal-legend .sw{width:12px; height:12px; border-radius:4px;}
   .day-detail{margin-top:14px;}
@@ -2737,21 +2736,23 @@
     var daysLabel = formatSelectedDaysLabel(days);
     var body = '<div class="section-sub" style="margin-top:0;">매일 꼭 오는 필수 알림이에요 — 시간만 조절할 수 있어요. 요일을 여러 개 골라(예: 월~금) 그 요일들만 같은 시간으로 맞출 수 있어요.</div>';
 
-    body += '<div class="preset-row" style="justify-content:flex-start; margin-top:0;">';
+    // 칩 대신 새 일정 폼의 "반복 요일"과 같은 고정 크기 원형 버튼(.day-dot)을 써요 — 칩은
+    // 폭이 글자 길이에 따라 달라져서 7개가 한 줄에 다 안 들어가고 줄바꿈됐었어요.
+    body += '<div class="day-row">';
     WEEKDAY_LABELS.forEach(function(lbl,d){
-      body += chip(lbl, days.indexOf(d)!==-1, "appAction('toggleRoutineEditDay',"+d+")");
+      body += '<button class="day-dot'+(days.indexOf(d)!==-1?' active':'')+'" onclick="appAction(\'toggleRoutineEditDay\','+d+')">'+lbl+'</button>';
     });
     body += '</div>';
 
     var wt = parseHM(r.wakeTimes[repDay]);
     body += '<div class="settings-row"><div><div class="t">기상 알림 + 컨디션 체크 · '+daysLabel+'</div>' +
-      '<div class="d">기상 시간에 알림으로 오늘 컨디션을 확인하고, 가벼운 스트레칭과 함께 오늘 일정을 바로 브리핑해줘요.</div></div></div>';
+      '<div class="d" style="max-width:none;">기상 시간에 알림으로 오늘 컨디션을 확인하고, 가벼운 스트레칭과 함께 오늘 일정을 바로 브리핑해줘요.</div></div></div>';
     body += '<div class="routine-expand"><div class="stepper-row">'+stepperHtml('기상 시간', meridiemTimeLabel(wt.hour,wt.minute), "appAction('routineTimeStep','wake',-30)", "appAction('routineTimeStep','wake',30)")+'</div>';
-    body += '<button class="btn btn-secondary" onclick="appAction(\'previewWakeRoutine\')">지금 컨디션 체크해보기</button></div>';
+    body += '<button class="btn btn-secondary" onclick="appAction(\'previewWakeRoutine\')">지금 미리보기</button></div>';
 
     var st = parseHM(r.sleepTimes[repDay]);
     body += '<div class="settings-row"><div><div class="t">취침 알림 + 내일 일정 미리보기 · '+daysLabel+'</div>' +
-      '<div class="d">취침 시간에 알림으로 내일 일정을 미리 알려줘요.</div></div></div>';
+      '<div class="d" style="max-width:none;">취침 시간에 알림으로 내일 일정을 미리 알려줘요.</div></div></div>';
     body += '<div class="routine-expand"><div class="stepper-row">'+stepperHtml('취침 시간', meridiemTimeLabel(st.hour,st.minute), "appAction('routineTimeStep','sleep',-30)", "appAction('routineTimeStep','sleep',30)")+'</div>';
     body += '<button class="btn btn-secondary" onclick="appAction(\'previewSleepRoutine\')">지금 미리보기</button></div>';
 
