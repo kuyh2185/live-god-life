@@ -459,11 +459,11 @@
   // 이전 세션에서 변형된 데이터가 섞이지 않아요.
   function demoEvents(){
     return [
-      { id:'ev1', label:'아침 운동', time:'07:00', days:[1,3,5], duration:30, isFixed:false, isWorkout:true,
+      { id:'ev1', label:'아침 운동', time:'07:00', days:[1,3,5], duration:30, isFixed:false,
         minVersion:'스트레칭 5분만', checkinOverride:null, memo:null, paused:false, reminderMinutes:10 },
-      { id:'ev2', label:'영어 스터디', time:'19:00', days:[2,4], duration:60, isFixed:false, isWorkout:false,
+      { id:'ev2', label:'영어 스터디', time:'19:00', days:[2,4], duration:60, isFixed:false,
         minVersion:null, checkinOverride:null, memo:'단어 30개 외우기', paused:false, reminderMinutes:null },
-      { id:'ev3', label:'약 챙겨 먹기', time:'08:30', days:[0,1,2,3,4,5,6], duration:5, isFixed:true, isWorkout:false,
+      { id:'ev3', label:'약 챙겨 먹기', time:'08:30', days:[0,1,2,3,4,5,6], duration:5, isFixed:true,
         minVersion:null, checkinOverride:'immediately', memo:null, paused:false, reminderMinutes:5 }
     ];
   }
@@ -630,7 +630,7 @@
       var label = (ov && ov.label) || ev.label;
       var record = findScheduleEntry(entryId);
       rows.push({ entryId:entryId, refId:ev.id, kind:'session', label:label, time:time, duration:duration,
-        isFixed:ev.isFixed, minVersion:ev.minVersion, memo:ev.memo, isWorkout:!!ev.isWorkout,
+        isFixed:ev.isFixed, minVersion:ev.minVersion, memo:ev.memo,
         status: record ? record.status : 'upcoming',
         isMiniVersion: !!(ov && ov.isMiniVersion), reminderMinutes:ev.reminderMinutes||null });
     });
@@ -639,7 +639,7 @@
       var entryId = en.id+'-'+dateKey;
       var record = findScheduleEntry(entryId);
       rows.push({ entryId:entryId, refId:en.id, kind:'adhoc', label:en.label, time:en.time, duration:en.duration,
-        isFixed:en.isFixed, minVersion:en.minVersion||null, memo:en.memo, isWorkout:false,
+        isFixed:en.isFixed, minVersion:en.minVersion||null, memo:en.memo,
         status: record ? record.status : 'upcoming', isMiniVersion:!!en.isMiniVersion, reminderMinutes:en.reminderMinutes||null });
     });
     rows.sort(function(a,b){ return a.time < b.time ? -1 : a.time > b.time ? 1 : 0; });
@@ -787,9 +787,9 @@
     var rows = computeAdjustableItems(dateKey, now);
     var withMinVersion = rows.filter(function(r){ return !!r.minVersion; })
       .map(function(r){ return {refId:r.refId, kind:r.kind, label:r.label, time:r.time, minVersion:r.minVersion,
-        duration:r.duration, miniDuration:computeMiniDuration(r.duration), isWorkout:r.isWorkout}; });
+        duration:r.duration, miniDuration:computeMiniDuration(r.duration)}; });
     var withoutMinVersion = rows.filter(function(r){ return !r.minVersion; })
-      .map(function(r){ return {refId:r.refId, kind:r.kind, label:r.label, time:r.time, minVersion:null, duration:r.duration, isWorkout:r.isWorkout}; });
+      .map(function(r){ return {refId:r.refId, kind:r.kind, label:r.label, time:r.time, minVersion:null, duration:r.duration}; });
     return { withMinVersion: withMinVersion, withoutMinVersion: withoutMinVersion };
   }
   // "제안대로 적용"의 기본 제안이에요. 컨디션 체크에서 "안 좋음"이라고 직접 답했을 때만
@@ -807,7 +807,7 @@
     var mustDoId = checkin && checkin.mustDoId;
     var toDrop = computeAdjustableItems(dateKey, now)
       .filter(function(r){ return r.entryId !== mustDoId; })
-      .map(function(r){ return {refId:r.refId, kind:r.kind, label:r.label, time:r.time, minVersion:null, duration:r.duration, isWorkout:r.isWorkout}; });
+      .map(function(r){ return {refId:r.refId, kind:r.kind, label:r.label, time:r.time, minVersion:null, duration:r.duration}; });
     return { withMinVersion: [], withoutMinVersion: toDrop };
   }
 
@@ -1534,11 +1534,11 @@
       case 'add_recurring_event':
         addRecurringEvent({label:a.label||'새 반복 일정', time:a.time||'09:00',
           days:(a.days&&a.days.length)?a.days:[weekdayOfKey(todayKey())], duration:a.durationMinutes||30,
-          isFixed:false, isTimeFixed:false, isWorkout:false, minVersion:null, memo:null});
+          isFixed:false, minVersion:null, memo:null});
         break;
       case 'add_adhoc_event':
         addAdhocEntry({label:a.label||'새 일정', dateKey:dk, time:a.time||'09:00', duration:a.durationMinutes||30,
-          isFixed:false, isTimeFixed:false, minVersion:null, memo:null});
+          isFixed:false, minVersion:null, memo:null});
         break;
       case 'delete_event':
         if(a.eventId) deleteRecurringEvent(a.eventId);
@@ -1680,25 +1680,26 @@
     Array.prototype.forEach.call(cols, function(col){
       var ns = col.getAttribute('data-ns'), role = col.getAttribute('data-role');
       var kind = col.getAttribute('data-kind') || 'time';
-      var ref = kind==='duration' ? durationRefFor(ns) : timeRefFor(ns);
+      var ref = kind==='duration' ? durationRefFor(ns) : kind==='reminder' ? reminderRefFor(ns) : timeRefFor(ns);
       if(!ref) return;
-      var idx = kind==='duration' ? durationIndexFor(role, ref.get()) : wheelIndexFor(role, parseHM(ref.get()));
+      var idx = kind==='duration' ? durationIndexFor(role, ref.get()) : kind==='reminder' ? reminderIndexOf(ref.get()) : wheelIndexFor(role, parseHM(ref.get()));
       col.scrollTop = idx*36;
       updateWheelCenter(col, idx);
+      function settleThisWheel(){
+        if(kind==='duration') settleDurationWheel(col, ns, role);
+        else if(kind==='reminder') settleReminderWheel(col, ns);
+        else settleWheel(col, ns, role);
+      }
       col.onscroll = function(){
         clearTimeout(col._settleTimer);
-        col._settleTimer = setTimeout(function(){
-          if(kind==='duration') settleDurationWheel(col, ns, role); else settleWheel(col, ns, role);
-        }, 130);
+        col._settleTimer = setTimeout(settleThisWheel, 130);
       };
       var items = col.querySelectorAll('.wheel-item');
       Array.prototype.forEach.call(items, function(item, i){
         item.onclick = function(){
           col.scrollTo({top:i*36, behavior:'smooth'});
           clearTimeout(col._settleTimer);
-          col._settleTimer = setTimeout(function(){
-            if(kind==='duration') settleDurationWheel(col, ns, role); else settleWheel(col, ns, role);
-          }, 260);
+          col._settleTimer = setTimeout(settleThisWheel, 260);
         };
       });
     });
@@ -1965,21 +1966,40 @@
     return html;
   }
 
-  // ── 시작 전 알림 (몇 분 전에 알려줄지) ──
+  // ── 시작 전 알림 (몇 분 전에 알려줄지) — 다른 시간 값들과 통일감 있게 롤링 휠로 골라요.
   // 반복 일정은 이 값을 한 번 정해두면 매 회차마다 계속 쓰이고(일정 자체에 저장),
   // 일회성 일정은 추가할 때(빠른 추가·새 일정 폼) 그때그때 골라요.
-  var REMINDER_PRESETS = [0,5,10,30,60];
+  var REMINDER_WHEEL_VALUES = [0,5,10,15,20,30,45,60,90,120];
   function reminderLabel(m){
     if(!m) return '알림 없음';
-    return m>=60 ? (Math.round(m/60)+'시간 전') : (m+'분 전');
+    return formatDurationHM(m)+' 전';
   }
-  function reminderPicker(value, actionName){
-    var html = '<div class="preset-row">';
-    REMINDER_PRESETS.forEach(function(m){
-      html += chip(reminderLabel(m), (value||0)===m, "appAction('"+actionName+"',"+m+")", true);
-    });
+  function reminderRefFor(ns){
+    if(ns==='form') return { get:function(){ return ui.form.draft.reminderMinutes; }, set:function(v){ ui.form.draft.reminderMinutes = v; } };
+    if(ns==='quickAdd') return { get:function(){ return ui.quickAdd.reminderMinutes; }, set:function(v){ ui.quickAdd.reminderMinutes = v; } };
+    return null;
+  }
+  function reminderIndexOf(value){
+    var idx = REMINDER_WHEEL_VALUES.indexOf(value||0);
+    return idx===-1 ? 0 : idx;
+  }
+  function reminderPicker(value, ns){
+    var labels = REMINDER_WHEEL_VALUES.map(reminderLabel);
+    var html = '<div class="wheel-picker"><div class="wheel-highlight"></div>';
+    html += wheelColumn(ns, 'reminder', labels, reminderIndexOf(value), 'reminder');
     html += '</div>';
     return html;
+  }
+  function settleReminderWheel(col, ns){
+    if((ns==='form' && !ui.form) || (ns==='quickAdd' && !ui.quickAdd)) return;
+    var items = col.querySelectorAll('.wheel-item');
+    if(!items.length) return;
+    var idx = Math.round(col.scrollTop/36);
+    idx = Math.max(0, Math.min(items.length-1, idx));
+    col.scrollTo({top: idx*36, behavior:'smooth'});
+    updateWheelCenter(col, idx);
+    var ref = reminderRefFor(ns); if(!ref) return;
+    ref.set(REMINDER_WHEEL_VALUES[idx]);
   }
 
   // ── 겹친 일정 해결 시트 (v40: 컨디션 조정과 완전히 분리) ──
@@ -2379,7 +2399,7 @@
       '<input class="textfield" value="'+esc(q.label)+'" placeholder="예: 은행 다녀오기" oninput="appAction(\'quickAddLabel\',this.value)"/>';
     body += renderTimeWheel(q.time, 'quickAdd');
     body += '<div class="field-label">소요 시간</div>'+durationPicker(q.duration, 'quickAddDuration');
-    body += '<div class="field-label">시작 전 알림</div>'+reminderPicker(q.reminderMinutes, 'quickAddReminderPreset');
+    body += '<div class="field-label">시작 전 알림</div>'+reminderPicker(q.reminderMinutes, 'quickAdd');
     body += '<div style="margin-top:16px;">'+btn('추가', 'primary', "appAction('quickAddSave')")+btn('취소', 'ghost', "appAction('quickAddClose')")+'</div>';
     return '<div class="overlay" onclick="appAction(\'quickAddClose\')"><div class="sheet" onclick="event.stopPropagation()">' +
       '<div class="sheet-title">빠른 일정 추가 (오늘)</div>'+body+'</div></div>';
@@ -2435,12 +2455,9 @@
     if(f.advancedOpen){
       body += '<div class="preset-row" style="margin-top:4px;">';
       body += chip('오늘 꼭 해야 함', d.isFixed, "appAction('formToggle','isFixed')");
-      body += chip('시간 변경 제안 안 받기', d.isTimeFixed, "appAction('formToggle','isTimeFixed')");
-      if(f.kind==='session') body += chip('운동 일정이에요', d.isWorkout, "appAction('formToggle','isWorkout')");
       body += '</div>';
-      body += '<div class="field-label">힘든 날에는 (선택)</div><input class="textfield" value="'+esc(d.minVersion)+'" placeholder="예: 스트레칭 5분만" oninput="appAction(\'formField\',\'minVersion\',this.value)"/>';
       body += '<div class="field-label">메모 (선택)</div><input class="textfield" value="'+esc(d.memo)+'" placeholder="" oninput="appAction(\'formField\',\'memo\',this.value)"/>';
-      body += '<div class="field-label">시작 전 알림'+(f.kind==='session'?' (매 회차 공통)':'')+'</div>'+reminderPicker(d.reminderMinutes, 'formReminderPreset');
+      body += '<div class="field-label">시작 전 알림'+(f.kind==='session'?' (매 회차 공통)':'')+'</div>'+reminderPicker(d.reminderMinutes, 'form');
     }
 
     body += '<div style="margin-top:16px;">'+btn('저장', 'primary', "appAction('formSave')");
@@ -3050,11 +3067,10 @@
       case 'quickAddDurationPreset': ui.quickAdd.duration = args[0]; break;
       case 'quickAddDurationCustom': break;
       case 'quickAddDurationStep': ui.quickAdd.duration = Math.max(5, ui.quickAdd.duration+args[0]); break;
-      case 'quickAddReminderPreset': ui.quickAdd.reminderMinutes = args[0]; break;
       case 'quickAddSave': {
         if(!ui.quickAdd.label.trim()) return;
         addAdhocEntry({label:ui.quickAdd.label.trim(), dateKey:ui.quickAdd.dateKey, time:ui.quickAdd.time,
-          duration:ui.quickAdd.duration, isFixed:false, isTimeFixed:false, minVersion:null, memo:null,
+          duration:ui.quickAdd.duration, isFixed:false, minVersion:null, memo:null,
           reminderMinutes: ui.quickAdd.reminderMinutes||null});
         ui.quickAdd = null; break;
       }
@@ -3083,7 +3099,6 @@
       case 'formDurationPreset': ui.form.draft.duration = args[0]; break;
       case 'formDurationCustom': break;
       case 'formDurationStep': ui.form.draft.duration = Math.max(5, ui.form.draft.duration+args[0]); break;
-      case 'formReminderPreset': ui.form.draft.reminderMinutes = args[0]; break;
       case 'formDateStep': ui.form.draft.dateKey = addDaysKey(ui.form.draft.dateKey, args[0]); break;
       case 'formDateQuick': ui.form.draft.dateKey = addDaysKey(todayKey(), args[0]); break;
       case 'formSave': {
@@ -3092,12 +3107,12 @@
         if(fm.kind==='session' && d.days.length===0){ alert('요일을 하나 이상 선택해주세요'); return; }
         if(fm.kind==='session'){
           var payload = {label:d.label.trim(), time:d.time, days:d.days, duration:d.duration, isFixed:d.isFixed,
-            isTimeFixed:d.isTimeFixed, isWorkout:d.isWorkout, minVersion:d.minVersion.trim()||null, memo:d.memo.trim()||null,
+            minVersion:d.minVersion.trim()||null, memo:d.memo.trim()||null,
             reminderMinutes:d.reminderMinutes||null};
           if(fm.editingId) updateRecurringEvent(fm.editingId, payload); else addRecurringEvent(payload);
         } else {
           var payload2 = {label:d.label.trim(), dateKey:d.dateKey, time:d.time, duration:d.duration, isFixed:d.isFixed,
-            isTimeFixed:d.isTimeFixed, minVersion:d.minVersion.trim()||null, memo:d.memo.trim()||null,
+            minVersion:d.minVersion.trim()||null, memo:d.memo.trim()||null,
             reminderMinutes:d.reminderMinutes||null};
           if(fm.editingId) updateAdhocEntry(fm.editingId, payload2); else addAdhocEntry(payload2);
         }
@@ -3263,7 +3278,7 @@
         if(cmsg && cmsg.proposal){
           var cp = cmsg.proposal;
           if(cp.recurring) addRecurringEvent({label:cp.label, time:cp.time, days:cp.days, duration:cp.duration,
-            isFixed:false, isWorkout:false, minVersion:null, memo:null});
+            isFixed:false, minVersion:null, memo:null});
           else addAdhocEntry({label:cp.label, dateKey:cp.dateKey, time:cp.time, duration:cp.duration,
             isFixed:false, minVersion:null, memo:null});
           cmsg.proposal = null;
@@ -3314,15 +3329,15 @@
     if(kind==='session'){
       var ev = id ? state.events.find(function(e){return e.id===id;}) : null;
       draft = ev ? {label:ev.label, time:ev.time, days:ev.days.slice(), dateKey:todayKey(), duration:ev.duration,
-        isFixed:ev.isFixed, isTimeFixed:!!ev.isTimeFixed, isWorkout:ev.isWorkout, minVersion:ev.minVersion||'', memo:ev.memo||'',
+        isFixed:ev.isFixed, minVersion:ev.minVersion||'', memo:ev.memo||'',
         reminderMinutes:ev.reminderMinutes||0} :
-        {label:'', time:'09:00', days:[], dateKey:todayKey(), duration:30, isFixed:false, isTimeFixed:false, isWorkout:false, minVersion:'', memo:'', reminderMinutes:10};
+        {label:'', time:'09:00', days:[], dateKey:todayKey(), duration:30, isFixed:false, minVersion:'', memo:'', reminderMinutes:10};
     } else {
       var en = id ? state.adhocEntries.find(function(e){return e.id===id;}) : null;
       draft = en ? {label:en.label, time:en.time, days:[], dateKey:en.dateKey, duration:en.duration,
-        isFixed:en.isFixed, isTimeFixed:!!en.isTimeFixed, isWorkout:false, minVersion:en.minVersion||'', memo:en.memo||'',
+        isFixed:en.isFixed, minVersion:en.minVersion||'', memo:en.memo||'',
         reminderMinutes:en.reminderMinutes||0} :
-        {label:'', time:'09:00', days:[], dateKey:curDateKey(), duration:30, isFixed:false, isTimeFixed:false, isWorkout:false, minVersion:'', memo:'', reminderMinutes:10};
+        {label:'', time:'09:00', days:[], dateKey:curDateKey(), duration:30, isFixed:false, minVersion:'', memo:'', reminderMinutes:10};
     }
     ui.form = { kind:kind, editingId:id||null, draft: draft, initial: Object.assign({}, draft), advancedOpen:false };
   }
