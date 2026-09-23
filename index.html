@@ -401,15 +401,48 @@
     display:flex; align-items:flex-end; justify-content:center;}
   .nyang-stage .cat{margin-bottom:-26px; animation:nyangPeek .55s cubic-bezier(.2,.9,.3,1.25) both;}
   @keyframes nyangPeek{from{transform:translateY(100%);} to{transform:translateY(0);}}
-  .nyang-paw{position:absolute; right:-100px; top:20px; animation:nyangPunch 1s ease-out .45s both;}
-  @keyframes nyangPunch{0%{transform:translateX(0) rotate(-25deg);} 32%{transform:translateX(-190px) rotate(6deg);}
-    55%{transform:translateX(-170px) rotate(0);} 100%{transform:translateX(0) rotate(-25deg);}}
-  .nyang-pow{position:absolute; left:50%; top:16px; margin-left:-60px; font-size:26px; font-weight:900; color:#E5484D;
-    animation:nyangPow 1s ease-out .7s both;}
+  .buddy-photo{display:block; object-fit:contain;}
+  .buddy-slots{display:grid; grid-template-columns:repeat(3,1fr); gap:8px;}
+  .buddy-slot{display:flex; flex-direction:column; align-items:center; gap:6px; background:var(--surface-2);
+    border:1px solid var(--border); border-radius:14px; padding:10px 6px;}
+  .buddy-slot-img{width:64px; height:64px; border-radius:12px; background:var(--chip-bg); display:flex;
+    align-items:center; justify-content:center; font-size:26px; overflow:hidden;}
+  .buddy-slot-img img{width:100%; height:100%;}
+  .buddy-slot-lbl{font-size:11px; font-weight:700; text-align:center;}
+  .buddy-slot-btn{cursor:pointer;}
+  .buddy-slot-clear{background:none; border:none; font-size:10.5px; color:var(--text-faint); text-decoration:underline; cursor:pointer; padding:0;}
+  .buddy-prompt{background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:9px 11px;
+    font-size:11.5px; line-height:1.5; color:var(--text-muted); user-select:all; font-family:ui-monospace,Menlo,monospace;}
+
+  /* 냥냥펀치 — 앱 화면 전체를 두들겨요. 타이밍은 JS의 NYANG_HIT_START/GAP/SEQ_MS와 맞춰져 있어요
+     (펀치 0.6s부터 0.38s 간격 4번, 각 펀치는 0.2s 지점에 화면에 닿음, 2.65s에 시트 등장). */
+  .nyang-punch-overlay{background:rgba(18,24,21,.16); overflow:hidden;}
+  .nyang-hit{position:absolute; width:150px; height:150px; pointer-events:none;}
+  .nyang-hit-paw{animation:nyangHit .5s cubic-bezier(.3,.7,.4,1) both; filter:drop-shadow(0 18px 22px rgba(0,0,0,.35));}
+  @keyframes nyangHit{0%{opacity:0; transform:translateY(90px) scale(2.6);} 40%{opacity:1; transform:translateY(0) scale(1);}
+    52%{transform:scale(1.05);} 72%{opacity:1; transform:scale(1);} 100%{opacity:0; transform:translateY(70px) scale(1.6);}}
+  .nyang-print{position:absolute; margin:10px 0 0 10px; pointer-events:none; filter:blur(1.2px); animation:nyangPrint .15s ease-out both;}
+  @keyframes nyangPrint{from{opacity:0; transform:scale(.8);} to{opacity:1; transform:scale(1);}}
+  .nyang-hit-pow{position:absolute; font-size:30px; font-weight:900; color:#E5484D; pointer-events:none;
+    text-shadow:0 2px 0 #fff, 0 0 12px rgba(255,255,255,.9); animation:nyangPow .5s ease-out both;}
   @keyframes nyangPow{0%{opacity:0; transform:scale(.3) rotate(-12deg);} 30%{opacity:1; transform:scale(1.3) rotate(-12deg);}
     100%{opacity:0; transform:scale(1) rotate(-12deg);}}
-  .nyang-shake{animation:nyangShake .45s ease-in-out .78s both;}
-  @keyframes nyangShake{0%,100%{transform:translateX(0);} 25%{transform:translateX(-8px);} 50%{transform:translateX(7px);} 75%{transform:translateX(-4px);}}
+  .nyang-bottom{position:absolute; left:0; right:0; bottom:0; display:flex; flex-direction:column; align-items:center;
+    animation:nyangBottom 2.65s both;}
+  @keyframes nyangBottom{0%{transform:translateY(100%);} 15%{transform:translateY(var(--sh,320px));}
+    87%{transform:translateY(var(--sh,320px));} 100%{transform:translateY(0);}}
+  .nyang-punch-cat{margin-bottom:-14px; filter:drop-shadow(0 6px 14px rgba(0,0,0,.25));}
+  .nyang-bottom .sheet{position:relative;}
+  .nyang-punch-overlay.done *{animation:none !important;}
+  .nyang-punch-overlay.done .nyang-hit, .nyang-punch-overlay.done .nyang-hit-pow{display:none;}
+  /* 펀치가 닿을 때마다 뒤의 앱 화면이 흔들려요(.phone 자체를 움직이면 안의 fixed 오버레이 기준이
+     바뀌어서, 화면 조각들만 흔들어요). */
+  .phone.nyang-shaking > .topbar, .phone.nyang-shaking > .daytoggle, .phone.nyang-shaking > .content,
+  .phone.nyang-shaking > .tabbar{animation:nyangAppShake 2.3s linear both;}
+  @keyframes nyangAppShake{0%,34%{transform:none;} 35%{transform:translate(-8px,5px) rotate(-.7deg);} 38%{transform:translate(6px,-3px) rotate(.4deg);}
+    42%,50%{transform:none;} 51.5%{transform:translate(8px,4px) rotate(.7deg);} 54.5%{transform:translate(-5px,-3px);}
+    58%,67%{transform:none;} 68%{transform:translate(-7px,6px) rotate(-.6deg);} 71%{transform:translate(5px,-2px);}
+    75%,84%{transform:none;} 84.5%{transform:translate(9px,5px) rotate(.8deg);} 88%{transform:translate(-6px,-3px);} 92%,100%{transform:none;}}
   .nyang-stage.care{background:#ECE8FA;}
   .nyang-stage.care .cat{margin-bottom:-6px;}
   .nyang-z{position:absolute; font-size:18px; font-weight:800; color:#7C6BC4; animation:nyangZ 2.4s ease-in-out infinite;}
@@ -594,7 +627,8 @@
       // 직접 문장으로 적거나, 오늘 탭에서 그 자리를 눌러 언제든 다시 쓸 수 있어요.
       myGoal:null,
       // 방해꾼 캐릭터 꾸미기 — 저작권 문제가 없도록 자체 캐릭터(고양이)의 색·소품만 바꿔요.
-      buddy:{ color:'cheese', prop:'headband' },
+      // photos: AI로 만든 실사 고양이 이미지(배경 없는 PNG 권장) — 있으면 그림 대신 이걸 써요.
+      buddy:{ color:'cheese', prop:'headband', photos:{ cat:null, paw:null, sleep:null } },
       // 기상·취침 루틴은 선택이 아니라 항상 켜져 있는 필수 알림이에요 — 시간만 조절할 수 있어요
       // (예전 리뷰에서 "운동 전용처럼 보이는 강제 미션"은 빼기로 했던 것과는 별개로, 이건 특정
       // 운동을 강요하지 않는 일반적인 아침/저녁 루틴 알림이라 이 앱의 정체성과 어울려요).
@@ -671,7 +705,7 @@
     chatOpen:false, chat:null,
     historyMonthOffset:0, historySelectedDate:null,
     share:null, historyChangesOpen:false,
-    nyang:null, nyangForm:null
+    nyang:null, nyangForm:null, buddyPromptsOpen:false
   };
   var toastTimer = null, notifTimer = null, nyangTimer = null;
 
@@ -1073,7 +1107,7 @@
 
   // ───────────────────────── 렌더 ─────────────────────────
   var root = document.getElementById('phone');
-  function render(){ root.innerHTML = renderPhone(); if(ui.share) drawShareCard(); }
+  function render(){ root.innerHTML = renderPhone(); if(ui.share) drawShareCard(); afterNyangRender(); }
 
   function iconToday(){ return '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h9M4 12h9M4 18h5"/><path d="M15.5 6.5l1.8 1.8L21 4.5"/></svg>'; }
   function iconSchedule(){ return '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>'; }
@@ -1163,6 +1197,7 @@
     if(ui.chatOpen) html += renderChatModal();
     if(ui.share) html += renderShareModal();
     if(ui.nyangForm) html += renderNyangFormModal();
+    if(ui.buddyPromptsOpen) html += renderBuddyPromptsModal();
     if(ui.nyang) html += renderNyangReaction();
 
     return html;
@@ -1780,6 +1815,34 @@
       '<circle cx="19" cy="29" r="3.8" fill="#F4A3B4"/><circle cx="27" cy="23.5" r="3.8" fill="#F4A3B4"/>' +
       '<circle cx="37" cy="23.5" r="3.8" fill="#F4A3B4"/><circle cx="45" cy="29" r="3.8" fill="#F4A3B4"/></svg>';
   }
+  function buddyPhoto(kind){ return state.settings.buddy.photos[kind]; }
+  // 실사 사진이 있으면 사진, 없으면 그림 고양이. 이불 장면은 "자는 모습" 사진이 없으면 정면
+  // 사진 위에 그림 이불만 덮어요.
+  function buddyArt(size, expr){
+    var cat = buddyPhoto('cat');
+    if(expr==='blanket'){
+      var sleep = buddyPhoto('sleep');
+      if(sleep) return '<img class="cat buddy-photo" src="'+sleep+'" width="'+size+'" height="'+size+'" alt="">';
+      if(!cat) return catSvg(size, expr);
+      return '<div class="cat" style="position:relative; width:'+size+'px; height:'+size+'px;">' +
+        '<img class="buddy-photo" src="'+cat+'" width="'+size+'" height="'+size+'" alt="">' +
+        '<svg style="position:absolute; left:0; bottom:0;" width="'+size+'" height="'+Math.round(size*0.4)+'" viewBox="0 38 64 26" preserveAspectRatio="none" aria-hidden="true">' +
+        '<path d="M0 49 Q32 38 64 49 V64 H0 Z" fill="#A9BEF2" stroke="#5B72B8" stroke-width="1.5"/></svg></div>';
+    }
+    if(cat) return '<img class="cat buddy-photo" src="'+cat+'" width="'+size+'" height="'+size+'" alt="">';
+    return catSvg(size, expr);
+  }
+  function pawArt(size){
+    var paw = buddyPhoto('paw');
+    if(paw) return '<img class="buddy-photo" src="'+paw+'" width="'+size+'" height="'+size+'" alt="">';
+    return pawSvg(size);
+  }
+  // 펀치 맞은 자리에 남는 발자국 얼룩(유리에 찍힌 느낌) — 사진 여부와 상관없이 같은 모양이에요.
+  function pawPrintSvg(size){
+    return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 64 64" aria-hidden="true"><g fill="rgba(60,40,40,.22)">' +
+      '<ellipse cx="32" cy="42" rx="11" ry="9"/><ellipse cx="17" cy="27" rx="5" ry="6"/><ellipse cx="27" cy="20" rx="5" ry="6"/>' +
+      '<ellipse cx="38" cy="20" rx="5" ry="6"/><ellipse cx="48" cy="27" rx="5" ry="6"/></g></svg>';
+  }
   function isCareModeToday(){
     var c = state.checkins[todayKey()];
     return !!(c && c.condition==='low');
@@ -1837,7 +1900,7 @@
           '<div class="sub">완벽한 계획보다, 다시 이어가는 하루</div></div>';
       }
       html += '<div class="greet-mascot-col"><div class="greet-bubble">'+esc(briefing.headline)+'</div>' +
-        '<div style="cursor:pointer;" onclick="appAction(\'setTab\',\'nyang\')">'+catSvg(52, isCareModeToday()?'blanket':'happy')+'</div></div>' +
+        '<div style="cursor:pointer;" onclick="appAction(\'setTab\',\'nyang\')">'+buddyArt(52, isCareModeToday()?'blanket':'happy')+'</div></div>' +
         '</div>';
       // v43: 컨디션 체크는 더 이상 오늘 탭에 따로 자리를 차지하지 않아요 — 기상 알림을 누르면
       // 그 흐름 안에서 한 번에 물어봐요(설정 → 기상 알림). 여기서 매번 노출하지 않아요.
@@ -2424,8 +2487,13 @@
     ctx.fillText('#냥냥펀치 #갓생살자 #오늘도맞음', 44, H-30);
     // 캐릭터는 SVG를 이미지로 바꿔서 그려요(비동기) — 그사이 카드가 다시 그려졌으면 무시해요.
     var img = new Image();
-    img.onload = function(){ if(document.getElementById('share-canvas')===canvas) ctx.drawImage(img, W/2-210, 400, 420, 420); };
-    img.src = 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(catSvg(420, log.punches>0?'angry':'happy'));
+    img.onload = function(){
+      if(document.getElementById('share-canvas')!==canvas) return;
+      var box = 420, iw = img.naturalWidth || box, ih = img.naturalHeight || box;
+      var s = Math.min(box/iw, box/ih), w = iw*s, h = ih*s;
+      ctx.drawImage(img, W/2-w/2, 400+(box-h)/2, w, h);
+    };
+    img.src = buddyPhoto('cat') || ('data:image/svg+xml;charset=utf-8,'+encodeURIComponent(catSvg(420, log.punches>0?'angry':'happy')));
   }
   function shareFileName(){ return (ui.share && ui.share.kind==='nyang') ? 'nyang-punch.png' : 'godsaeng-today.png'; }
   function shareCardNow(){
@@ -2517,7 +2585,7 @@
     var log = nyangLogFor(todayKey());
     var care = isCareModeToday();
     var html = '<div class="nyang-hero">' +
-      '<div class="nyang-hero-cat">'+catSvg(88, care?'blanket':'happy')+'</div>' +
+      '<div class="nyang-hero-cat">'+buddyArt(88, care?'blanket':'happy')+'</div>' +
       '<div style="flex:1; min-width:0;"><div class="nyang-hero-name">내가 고용한 귀여운 방해꾼</div>' +
       '<div class="nyang-hero-bubble">'+(care ? '오늘은 쉬어도 돼냥. 펀치 대신 이불 덮어줄게' : '딴짓하면 냥냥펀치, 지친 날엔 이불 덮어주기')+'</div></div></div>';
 
@@ -2553,7 +2621,7 @@
 
     var b = state.settings.buddy;
     html += '<div class="section-title">캐릭터 꾸미기</div>';
-    html += '<div class="nyang-dress"><div class="nyang-dress-preview">'+catSvg(76,'happy')+'</div><div style="flex:1; min-width:0;">' +
+    html += '<div class="nyang-dress"><div class="nyang-dress-preview">'+buddyArt(76,'happy')+'</div><div style="flex:1; min-width:0;">' +
       '<div class="field-label" style="margin-top:0;">색</div><div class="nyang-swatch-row">';
     Object.keys(BUDDY_COLORS).forEach(function(k){
       var c = BUDDY_COLORS[k];
@@ -2563,8 +2631,58 @@
     html += '</div><div class="field-label">소품</div><div>';
     BUDDY_PROPS.forEach(function(p){ html += chip(p[1], b.prop===p[0], "appAction('setBuddyProp','"+p[0]+"')", true); });
     html += '</div></div></div>';
+
+    html += '<div class="section-title">실사 고양이 넣기</div>' +
+      '<div class="section-sub">AI로 만든 실사 고양이 사진을 넣으면 그림 대신 그 고양이가 화면을 두들겨요. 배경이 지워진 PNG일수록 자연스러워요. 사진을 넣으면 위의 색·소품 대신 사진이 쓰여요.</div>';
+    html += '<div class="buddy-slots">';
+    BUDDY_PHOTO_SLOTS.forEach(function(s){
+      var src = b.photos[s[0]];
+      html += '<div class="buddy-slot"><div class="buddy-slot-img">'+(src ? '<img class="buddy-photo" src="'+src+'" alt="">' : '<span>'+s[2]+'</span>')+'</div>' +
+        '<div class="buddy-slot-lbl">'+s[1]+'</div>' +
+        '<label class="skip-btn buddy-slot-btn">'+(src?'바꾸기':'사진 넣기')+'<input type="file" accept="image/*" hidden onchange="appBuddyPhoto(\''+s[0]+'\', this)"></label>' +
+        (src ? '<button class="buddy-slot-clear" onclick="appAction(\'clearBuddyPhoto\',\''+s[0]+'\')">지우기</button>' : '') + '</div>';
+    });
+    html += '</div>';
+    html += '<button class="btn btn-secondary" style="margin-top:10px;" onclick="appAction(\'openBuddyPrompts\')">✨ AI로 실사 고양이 만드는 법</button>';
     return html;
   }
+
+  // [slot, 이름, 비어 있을 때 표시, AI 이미지 생성 프롬프트]
+  var BUDDY_PHOTO_SLOTS = [
+    ['cat','정면 얼굴','🐱','Photorealistic orange tabby cat, head and upper body, facing the camera, slightly annoyed glare, detailed fur, soft studio lighting, isolated on a transparent background, PNG'],
+    ['paw','앞발','🐾','Photorealistic close-up of one orange tabby cat front paw, pink toe beans facing the camera as if pressing against glass, isolated on a transparent background, PNG'],
+    ['sleep','자는 모습 (선택)','💤','Photorealistic orange tabby cat sleeping under a soft blue blanket, only the head visible, eyes closed, cozy, isolated on a transparent background, PNG']
+  ];
+  function renderBuddyPromptsModal(){
+    var body = '<div class="sheet-sub" style="margin-bottom:6px;">ChatGPT · Gemini · Midjourney 같은 이미지 AI에 아래 문장을 그대로 넣으면 돼요. 세 장 모두 같은 고양이로 나오게, 두 번째부터는 "앞에서 만든 고양이와 같은 고양이로"라고 덧붙여주세요.</div>';
+    BUDDY_PHOTO_SLOTS.forEach(function(s){
+      body += '<div class="field-label">'+s[2]+' '+s[1]+'</div><div class="buddy-prompt">'+esc(s[3])+'</div>';
+    });
+    body += '<div class="sheet-sub" style="margin-top:12px;">배경이 안 지워진 사진이 나오면, 휴대폰 사진 앱의 "배경 지우기(누끼)"나 remove.bg로 지운 뒤 PNG로 저장해서 넣어주세요. 다른 회사 캐릭터(산리오·포켓몬 등) 그림은 저작권 문제가 생기니 쓰지 마세요.</div>';
+    body += '<button class="btn btn-ghost" style="margin-top:14px;" onclick="appAction(\'closeBuddyPrompts\')">닫기</button>';
+    return '<div class="overlay" onclick="appAction(\'closeBuddyPrompts\')"><div class="sheet" onclick="event.stopPropagation()">' +
+      '<div class="sheet-title">AI로 실사 고양이 만드는 법</div>'+body+'</div></div>';
+  }
+  // 올린 사진은 긴 변 700px로 줄여서(PNG로 투명 배경 유지) 메모리에 들고 있어요.
+  window.appBuddyPhoto = function(kind, input){
+    var file = input.files && input.files[0];
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      var img = new Image();
+      img.onload = function(){
+        var s = Math.min(1, 700/Math.max(img.width, img.height));
+        var c = document.createElement('canvas');
+        c.width = Math.round(img.width*s); c.height = Math.round(img.height*s);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        state.settings.buddy.photos[kind] = c.toDataURL('image/png');
+        render();
+      };
+      img.onerror = function(){ showInfoToast('이미지를 읽지 못했어요. 다른 사진으로 해볼까요?'); };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  };
 
   function renderNyangFormModal(){
     var f = ui.nyangForm, d = f.draft;
@@ -2600,27 +2718,21 @@
     if(!r) return '';
     var stage, title, sub, buttons, sheetCls = 'sheet nyang-sheet';
     if(n.care){
-      stage = '<div class="nyang-stage care">'+catSvg(128,'blanket')+'<span class="nyang-z" style="left:58%; top:26px;">z</span><span class="nyang-z" style="left:64%; top:14px; animation-delay:.8s;">Z</span></div>';
+      stage = '<div class="nyang-stage care">'+buddyArt(128,'blanket')+'<span class="nyang-z" style="left:58%; top:26px;">z</span><span class="nyang-z" style="left:64%; top:14px; animation-delay:.8s;">Z</span></div>';
       title = '오늘은 쉬어도 돼냥';
       sub = '컨디션이 안 좋다고 했잖아. 오늘은 펀치 대신 이불 덮어줄게. '+esc(r.app)+' 조금만 보다가 푹 자라냥.';
       buttons = btn('고마워, 쉬러 갈게','primary',"appAction('nyangStop')") + btn('조금만 더 볼게','ghost',"appAction('nyangContinue')");
     } else if(n.level===1){
-      stage = '<div class="nyang-stage">'+catSvg(128,'stare')+'</div>';
+      stage = '<div class="nyang-stage">'+buddyArt(128,'stare')+'</div>';
       title = '…(빤히)';
       sub = esc(nyangTriggerLine(r));
       buttons = btn('알았어, 그만할게','primary',"appAction('nyangStop')") +
         btn('조금만 더 볼게','secondary',"appAction('nyangContinue')") + btn('오늘은 봐줘','ghost',"appAction('nyangForgive')");
     } else if(n.level===2){
-      sheetCls += ' nyang-shake';
-      stage = '<div class="nyang-stage">'+catSvg(128,'angry')+'<div class="nyang-paw">'+pawSvg(92)+'</div><div class="nyang-pow">냥!</div></div>';
-      title = '냥냥펀치!';
-      sub = esc(nyangTriggerLine(r))+' '+NYANG_WAIT_SECONDS+'초만 숨 고르고 정하라냥.';
-      buttons = btn('그만할게','primary',"appAction('nyangStop')") +
-        '<button id="nyang-continue" class="btn btn-secondary" onclick="appAction(\'nyangContinue\')"'+(n.countdown>0?' disabled':'')+'>'+nyangContinueLabel()+'</button>' +
-        btn('오늘은 봐줘','ghost',"appAction('nyangForgive')");
+      return renderNyangPunch(r, n);
     } else {
       sheetCls += ' lock';
-      stage = '<div class="nyang-stage">'+catSvg(128,'angry')+'<span class="nyang-lock-badge">🔒</span></div>';
+      stage = '<div class="nyang-stage">'+buddyArt(128,'angry')+'<span class="nyang-lock-badge">🔒</span></div>';
       title = '오늘 '+esc(r.app)+(hasBatchim(r.app)?'은':'는')+' 여기까지다냥';
       sub = '실제 앱에서는 이 화면이 '+esc(r.app)+(hasBatchim(r.app)?'을':'를')+' 덮어서 못 열게 막아요.';
       buttons = btn('알았어','primary',"appAction('nyangStop')") + btn('오늘은 봐줘','ghost',"appAction('nyangForgive')");
@@ -2628,6 +2740,58 @@
     return '<div class="overlay"><div class="'+sheetCls+'">'+stage +
       '<div class="nyang-title">'+title+'</div><div class="sheet-sub nyang-sub">'+sub+'</div>' +
       '<div style="margin-top:16px;">'+buttons+'</div></div></div>';
+  }
+  // ── 냥냥펀치(2단계): 고양이가 올라와서 앱 화면 전체를 네 번 두들겨요 ──
+  // 펀치마다 화면에 발자국 얼룩이 남고 앱 전체가 흔들린 뒤, 결정 시트가 고양이를 태운 채 올라와요.
+  // 좌표는 화면 대비 %(left, top), flip은 반대쪽 앞발.
+  var NYANG_HITS = [ {x:6, y:14, flip:false}, {x:50, y:30, flip:true}, {x:12, y:44, flip:false}, {x:46, y:8, flip:true} ];
+  var NYANG_HIT_START = 0.6, NYANG_HIT_GAP = 0.38, NYANG_IMPACT_AT = 0.2, NYANG_SEQ_MS = 2650;
+  function renderNyangPunch(r, n){
+    var done = Date.now() - n.startedAt >= NYANG_SEQ_MS;
+    var html = '<div class="overlay nyang-punch-overlay'+(done?' done':'')+'">';
+    NYANG_HITS.forEach(function(h, i){
+      var t = NYANG_HIT_START + i*NYANG_HIT_GAP;
+      var pos = 'left:'+h.x+'%; top:'+h.y+'%;';
+      html += '<div class="nyang-print" style="'+pos+' animation-delay:'+(t+NYANG_IMPACT_AT).toFixed(2)+'s;">'+pawPrintSvg(130)+'</div>';
+      html += '<div class="nyang-hit" style="'+pos+(h.flip?' transform:scaleX(-1);':'')+'"><div class="nyang-hit-paw" style="animation-delay:'+t.toFixed(2)+'s;">'+pawArt(150)+'</div></div>';
+      html += '<div class="nyang-hit-pow" style="left:calc('+h.x+'% + 70px); top:'+h.y+'%; animation-delay:'+(t+NYANG_IMPACT_AT-0.05).toFixed(2)+'s;">냥!</div>';
+    });
+    html += '<div class="nyang-bottom" id="nyang-bottom"><div class="nyang-punch-cat">'+buddyArt(190,'angry')+'</div>' +
+      '<div class="sheet nyang-sheet"><div class="nyang-title" style="margin-top:0;">냥냥펀치!</div>' +
+      '<div class="sheet-sub nyang-sub">'+esc(nyangTriggerLine(r))+' '+NYANG_WAIT_SECONDS+'초만 숨 고르고 정하라냥.</div>' +
+      '<div style="margin-top:16px;">'+btn('그만할게','primary',"appAction('nyangStop')") +
+      '<button id="nyang-continue" class="btn btn-secondary" onclick="appAction(\'nyangContinue\')"'+(n.countdown>0?' disabled':'')+'>'+nyangContinueLabel()+'</button>' +
+      btn('오늘은 봐줘','ghost',"appAction('nyangForgive')")+'</div></div></div>';
+    return html + '</div>';
+  }
+  // 시트가 처음엔 화면 밖에 있다가(고양이만 보이게) 펀치가 끝나면 올라와야 해서, 시트 높이를
+  // 재서 애니메이션 변수(--sh)로 넘겨요. render() 직후 같은 틱에서 하니까 첫 프레임 전에 적용돼요.
+  function afterNyangRender(){
+    var punching = !!(ui.nyang && !ui.nyang.care && ui.nyang.level===2);
+    root.classList.toggle('nyang-shaking', punching && Date.now()-ui.nyang.startedAt < NYANG_SEQ_MS);
+    var nb = document.getElementById('nyang-bottom');
+    if(nb) nb.style.setProperty('--sh', nb.querySelector('.sheet').offsetHeight+'px');
+  }
+  var nyangTimeouts = [];
+  function playNyangPunch(){
+    NYANG_HITS.forEach(function(h, i){
+      nyangTimeouts.push(setTimeout(nyangHitFeedback, (NYANG_HIT_START + i*NYANG_HIT_GAP + NYANG_IMPACT_AT)*1000));
+    });
+    nyangTimeouts.push(setTimeout(function(){ root.classList.remove('nyang-shaking'); startNyangCountdown(); }, NYANG_SEQ_MS));
+  }
+  // 알림 스타일 설정을 따라요 — 소리면 "퍽" 하는 낮은 소리, 진동이면 짧은 진동, 무음이면 화면만.
+  function nyangHitFeedback(){
+    var style = state.settings.notify.alertStyle;
+    try{
+      if(style==='vibrate' && navigator.vibrate) navigator.vibrate(70);
+      if(style!=='sound') return;
+      var Ctx = window.AudioContext || window.webkitAudioContext; if(!Ctx) return;
+      var ac = new Ctx(), o = ac.createOscillator(), g = ac.createGain(), t0 = ac.currentTime;
+      o.type = 'sine'; o.frequency.setValueAtTime(150, t0); o.frequency.exponentialRampToValueAtTime(55, t0+0.12);
+      g.gain.setValueAtTime(0.5*state.settings.notify.volume, t0); g.gain.exponentialRampToValueAtTime(0.001, t0+0.16);
+      o.connect(g); g.connect(ac.destination); o.start(t0); o.stop(t0+0.18);
+      setTimeout(function(){ ac.close(); }, 400);
+    }catch(e){}
   }
   function startNyangCountdown(){
     clearInterval(nyangTimer);
@@ -2640,7 +2804,12 @@
       if(ui.nyang.countdown<=0) clearInterval(nyangTimer);
     }, 1000);
   }
-  function closeNyang(){ clearInterval(nyangTimer); ui.nyang = null; }
+  function closeNyang(){
+    clearInterval(nyangTimer);
+    nyangTimeouts.forEach(clearTimeout); nyangTimeouts = [];
+    root.classList.remove('nyang-shaking');
+    ui.nyang = null;
+  }
 
   // ── 일정관리 ──
   function renderSchedule(){
@@ -3607,8 +3776,9 @@
           ui.nyang = { ruleId:nr.id, care:true, countdown:0 };
         } else {
           if(nr.level===1) nlog.stares++; else nlog.punches++;
-          ui.nyang = { ruleId:nr.id, level:nr.level, care:false, countdown: nr.level===2 ? NYANG_WAIT_SECONDS : 0 };
-          if(nr.level===2) startNyangCountdown();
+          closeNyang();
+          ui.nyang = { ruleId:nr.id, level:nr.level, care:false, countdown: nr.level===2 ? NYANG_WAIT_SECONDS : 0, startedAt:Date.now() };
+          if(nr.level===2) playNyangPunch();
         }
         break;
       }
@@ -3656,6 +3826,9 @@
       case 'setBuddyColor': state.settings.buddy.color = args[0]; break;
       case 'setBuddyProp': state.settings.buddy.prop = args[0]; break;
       case 'openNyangShare': ui.share = { kind:'nyang', includeDetails:false, hiddenIds:[] }; break;
+      case 'clearBuddyPhoto': state.settings.buddy.photos[args[0]] = null; break;
+      case 'openBuddyPrompts': ui.buddyPromptsOpen = true; break;
+      case 'closeBuddyPrompts': ui.buddyPromptsOpen = false; break;
     }
     render();
   };
