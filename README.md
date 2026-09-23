@@ -8,6 +8,8 @@ HTML/CSS/JS, 빌드 도구 없음)로 돼 있어서 브라우저에서 바로 �
 
 - `index.html` — 앱 전체(유일한 소스예요). 이 파일을 고치면 브라우저 미리보기와
   Capacitor 앱 양쪽에 다 반영돼요.
+- `assets/kittens/` — 방해꾼 탭의 실사 고양이 사진 5종(AI 생성, WebP). `index.html`이
+  상대 경로로 불러 쓰고, `npm run sync`/`npm run apk` 때 `www/`로 같이 복사돼요.
 - `server/` — 비서 채팅이 실제 LLM(Claude)과 대화하게 해주는 작은 백엔드. 배포 방법은
   `server/README.md` 참고.
 - `capacitor.config.json`, `package.json`, `scripts/build.js`, `scripts/build-apk.js` —

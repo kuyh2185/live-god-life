@@ -14,3 +14,8 @@ const dest = path.join(outDir, 'index.html');
 if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 fs.copyFileSync(src, dest);
 console.log('index.html → www/index.html 복사 완료');
+
+// index.html이 상대 경로로 불러 쓰는 이미지(방해꾼 고양이 사진)도 같이 복사해요.
+const kittensSrc = path.join(root, 'assets', 'kittens');
+fs.cpSync(kittensSrc, path.join(outDir, 'assets', 'kittens'), { recursive: true });
+console.log('assets/kittens → www/assets/kittens 복사 완료');
