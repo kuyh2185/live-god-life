@@ -182,6 +182,15 @@
     border:none; font-size:17px; font-weight:700; color:var(--text); cursor:pointer;}
   .stepper-val{min-width:56px; text-align:center; font-size:16px; font-weight:700; font-variant-numeric:tabular-nums;}
   .big-time{text-align:center; font-size:19px; font-weight:800; margin-bottom:6px;}
+  /* 시:분을 하나의 −/+로 같이 조절하던 걸, 시와 분을 각자 위/아래 화살표로 따로 조절하게 바꾼
+     스테퍼예요(요청: "시간과 분에 모두 위 아래로 화살표가 있어서 그걸 누르면 변경되게"). */
+  .time-dual-row{display:flex; justify-content:center; align-items:flex-end; gap:22px; margin-top:6px;}
+  .time-dual-col{display:flex; flex-direction:column; align-items:center; gap:5px;}
+  .time-dual-col .unit-lbl{font-size:11px; color:var(--text-muted);}
+  .time-dual-arrow{width:40px; height:26px; border-radius:9px; background:var(--chip-bg);
+    border:none; font-size:12px; font-weight:700; color:var(--text); cursor:pointer;
+    display:flex; align-items:center; justify-content:center;}
+  .time-dual-val{min-width:64px; text-align:center; font-size:16px; font-weight:700; font-variant-numeric:tabular-nums;}
   .preset-row{display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin-top:12px;}
   .textfield{width:100%; border:1px solid var(--border); border-radius:12px; background:var(--surface);
     color:var(--text); font-size:14px; padding:10px 13px; margin-bottom:12px; font-family:inherit;}
@@ -1577,11 +1586,29 @@
     if(ns==='quickAdd') return { get:function(){ return ui.quickAdd.time; }, set:function(v){ ui.quickAdd.time = v; } };
     return null;
   }
-  // 5분 단위로 시간을 조정해요(자정을 넘나들면 자연스럽게 다음/이전 날로 wrap돼요).
+  // 시와 분을 각자 위/아래 화살표로 따로 조절해요(자정을 넘나들면 자연스럽게 다음/이전 날로
+  // wrap돼요). 시 화살표는 1시간 단위, 분 화살표는 5분 단위로 움직여요. actionName·key는
+  // appAction(actionName, key, deltaMinutes) 형태로 호출되는 기존 timeStep/routineTimeStep과
+  // 그대로 맞물려요.
+  function timeDualStepperHtml(label, hour24, minute, actionName, key){
+    var mer = hour24 < 12 ? '오전' : '오후';
+    var h12 = hour24 % 12; if(h12===0) h12 = 12;
+    function arrow(dir, delta){
+      return '<button class="time-dual-arrow" onclick="appAction(\''+actionName+'\',\''+key+'\','+delta+')">'+(dir==='up'?'▲':'▼')+'</button>';
+    }
+    var html = '';
+    if(label) html += '<div class="lbl" style="text-align:center; margin-bottom:2px;">'+label+'</div>';
+    html += '<div class="time-dual-row">';
+    html += '<div class="time-dual-col"><span class="unit-lbl">시</span>'+arrow('up',60)+
+      '<span class="time-dual-val">'+mer+' '+h12+'시</span>'+arrow('down',-60)+'</div>';
+    html += '<div class="time-dual-col"><span class="unit-lbl">분</span>'+arrow('up',5)+
+      '<span class="time-dual-val">'+pad2(minute)+'분</span>'+arrow('down',-5)+'</div>';
+    html += '</div>';
+    return html;
+  }
   function renderTimeStepper(time, ns, label){
     var hm = parseHM(time);
-    return '<div class="stepper-row">'+stepperHtml(label||'시작 시간', meridiemTimeLabel(hm.hour,hm.minute),
-      "appAction('timeStep','"+ns+"',-5)", "appAction('timeStep','"+ns+"',5)")+'</div>';
+    return timeDualStepperHtml(label||'시작 시간', hm.hour, hm.minute, 'timeStep', ns);
   }
   function durationRefFor(ns){
     if(ns==='form') return { get:function(){ return ui.form.draft.duration; }, set:function(v){ ui.form.draft.duration = v; } };
@@ -1842,16 +1869,9 @@
       '<button class="stepper-btn" onclick="'+onDec+'">−</button><span class="stepper-val">'+value+'</span>' +
       '<button class="stepper-btn" onclick="'+onInc+'">+</button></div></div>';
   }
-  var DURATION_QUICK_PRESETS = [15,30,60];
   function durationPicker(duration, ns){
     var baseNs = ns.replace(/Duration$/,'');
-    var html = '<div class="preset-row">';
-    DURATION_QUICK_PRESETS.forEach(function(m){
-      html += chip(formatDurationHM(m), duration===m, "appAction('"+ns+"Preset',"+m+")", true);
-    });
-    html += '</div>';
-    html += renderDurationStepper(duration, baseNs);
-    return html;
+    return renderDurationStepper(duration, baseNs);
   }
 
   // ── 시작 전 알림 (몇 분 전에 알려줄지) — 위/아래 화살표 스테퍼로 5분 단위로 조정해요.
@@ -2747,13 +2767,13 @@
     var wt = parseHM(r.wakeTimes[repDay]);
     body += '<div class="settings-row"><div><div class="t">기상 알림 + 컨디션 체크 · '+daysLabel+'</div>' +
       '<div class="d" style="max-width:none;">기상 시간에 알림으로 오늘 컨디션을 확인하고, 가벼운 스트레칭과 함께 오늘 일정을 바로 브리핑해줘요.</div></div></div>';
-    body += '<div class="routine-expand"><div class="stepper-row">'+stepperHtml('기상 시간', meridiemTimeLabel(wt.hour,wt.minute), "appAction('routineTimeStep','wake',-30)", "appAction('routineTimeStep','wake',30)")+'</div>';
+    body += '<div class="routine-expand">'+timeDualStepperHtml('기상 시간', wt.hour, wt.minute, 'routineTimeStep', 'wake');
     body += '<button class="btn btn-secondary" onclick="appAction(\'previewWakeRoutine\')">지금 미리보기</button></div>';
 
     var st = parseHM(r.sleepTimes[repDay]);
     body += '<div class="settings-row"><div><div class="t">취침 알림 + 내일 일정 미리보기 · '+daysLabel+'</div>' +
       '<div class="d" style="max-width:none;">취침 시간에 알림으로 내일 일정을 미리 알려줘요.</div></div></div>';
-    body += '<div class="routine-expand"><div class="stepper-row">'+stepperHtml('취침 시간', meridiemTimeLabel(st.hour,st.minute), "appAction('routineTimeStep','sleep',-30)", "appAction('routineTimeStep','sleep',30)")+'</div>';
+    body += '<div class="routine-expand">'+timeDualStepperHtml('취침 시간', st.hour, st.minute, 'routineTimeStep', 'sleep');
     body += '<button class="btn btn-secondary" onclick="appAction(\'previewSleepRoutine\')">지금 미리보기</button></div>';
 
     body += '<div class="section-sub" style="margin-top:8px;">알림을 무음/진동/소리 중 어떻게 줄지는 설정 → 알림에서 바꿀 수 있어요.</div>';
@@ -2799,7 +2819,6 @@
         else updateAdhocEntry(r2.refId, {time:ui.sheet.draftTime});
         ui.sheet = null; break;
       }
-      case 'sheetDurationPreset': ui.sheet.draftDuration = args[0]; break;
       case 'sheetApplyAdjustDuration': {
         var r3 = findRow(ui.sheet.entryId, ui.sheet.dateKey);
         var patch = {time: ui.sheet.draftTime, duration: ui.sheet.draftDuration};
@@ -2964,7 +2983,6 @@
       case 'openQuickAdd': ui.quickAdd = {label:'', time:'09:00', duration:30, dateKey:todayKey(), reminderMinutes:10}; break;
       case 'quickAddClose': ui.quickAdd = null; break;
       case 'quickAddLabel': ui.quickAdd.label = args[0]; return;
-      case 'quickAddDurationPreset': ui.quickAdd.duration = args[0]; break;
       case 'quickAddSave': {
         if(!ui.quickAdd.label.trim()) return;
         addAdhocEntry({label:ui.quickAdd.label.trim(), dateKey:ui.quickAdd.dateKey, time:ui.quickAdd.time,
@@ -2993,7 +3011,6 @@
         days.sort(function(a,b){return a-b;});
         ui.form.draft.days = days; break;
       }
-      case 'formDurationPreset': ui.form.draft.duration = args[0]; break;
       case 'formDateQuick': ui.form.draft.dateKey = addDaysKey(todayKey(), args[0]); ui.form.dateCalOffset = 0; break;
       case 'formDateCalMonth': ui.form.dateCalOffset = (ui.form.dateCalOffset||0) + args[0]; break;
       case 'formDateCalPick': ui.form.draft.dateKey = args[0]; break;
