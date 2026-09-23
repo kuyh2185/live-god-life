@@ -14,12 +14,31 @@ if (!fs.existsSync(androidDir)) {
   process.exit(1);
 }
 
+// JAVA_HOME이 비어 있으면 Android Studio에 내장된 JDK(jbr)를 찾아서 Gradle에 넘겨줘요.
+// 환경변수를 방금 설정해서 아직 새 터미널을 안 열었을 때도 빌드가 되게 하려는 거예요.
+const env = { ...process.env };
+if (!env.JAVA_HOME || !fs.existsSync(env.JAVA_HOME)) {
+  const candidates = process.platform === 'win32'
+    ? [
+        path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Android', 'Android Studio', 'jbr'),
+        path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Android Studio', 'jbr'),
+      ]
+    : ['/Applications/Android Studio.app/Contents/jbr/Contents/Home', '/opt/android-studio/jbr'];
+  const jbr = candidates.find((dir) => fs.existsSync(path.join(dir, 'bin')));
+  if (jbr) {
+    env.JAVA_HOME = jbr;
+    console.log('JAVA_HOME이 없어서 Android Studio 내장 JDK를 써요: ' + jbr);
+  }
+}
+
 console.log('1/2) index.html -> www/ 동기화 중...');
 execSync('npx cap sync android', { cwd: root, stdio: 'inherit' });
 
 console.log('2/2) 디버그 APK 빌드 중 (Gradle) — 처음 실행하면 몇 분 걸릴 수 있어요...');
-const gradlew = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
-const result = spawnSync(gradlew, ['assembleDebug'], { cwd: androidDir, stdio: 'inherit', shell: true });
+// 전체 경로로 불러요 — Windows에서 NoDefaultCurrentDirectoryInExePath가 켜져 있으면 cmd가
+// 현재 폴더의 gradlew.bat을 찾지 못하거든요.
+const gradlew = path.join(androidDir, process.platform === 'win32' ? 'gradlew.bat' : 'gradlew');
+const result = spawnSync(`"${gradlew}"`, ['assembleDebug'], { cwd: androidDir, stdio: 'inherit', shell: true, env });
 
 if (result.status !== 0) {
   console.error(
