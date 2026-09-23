@@ -70,7 +70,7 @@
     --cal-5-bg:#9256F0; --cal-5-text:#FFFFFF;
   }
   *{box-sizing:border-box;}
-  body{margin:0; background:var(--bg); color:var(--text);
+  body{margin:0; background:var(--bg); color:var(--text); zoom:1.18;
     font-family:'Noto Sans KR',-apple-system,'Malgun Gothic',system-ui,sans-serif;}
   button{font-family:inherit;}
   .page{min-height:100%; display:flex; justify-content:center;
@@ -2377,18 +2377,12 @@
     var q = ui.quickAdd;
     var body = '<div class="field-label" style="margin-top:0;">이름</div>' +
       '<input class="textfield" value="'+esc(q.label)+'" placeholder="예: 은행 다녀오기" oninput="appAction(\'quickAddLabel\',this.value)"/>';
-    body += '<div class="field-label">날짜</div><div class="preset-row">';
-    [['오늘',0],['내일',1],['모레',2]].forEach(function(o){
-      var key = addDaysKey(todayKey(), o[1]);
-      body += chip(o[0], q.dateKey===key, "appAction('quickAddDateQuick',"+o[1]+")", true);
-    });
-    body += '</div>';
     body += renderTimeWheel(q.time, 'quickAdd');
     body += '<div class="field-label">소요 시간</div>'+durationPicker(q.duration, 'quickAddDuration');
     body += '<div class="field-label">시작 전 알림</div>'+reminderPicker(q.reminderMinutes, 'quickAddReminderPreset');
     body += '<div style="margin-top:16px;">'+btn('추가', 'primary', "appAction('quickAddSave')")+btn('취소', 'ghost', "appAction('quickAddClose')")+'</div>';
     return '<div class="overlay" onclick="appAction(\'quickAddClose\')"><div class="sheet" onclick="event.stopPropagation()">' +
-      '<div class="sheet-title">빠른 일정 추가 ('+esc(formatKoreanDate(q.dateKey))+')</div>'+body+'</div></div>';
+      '<div class="sheet-title">빠른 일정 추가 (오늘)</div>'+body+'</div></div>';
   }
 
   // ── 일정관리 ──
@@ -2788,7 +2782,7 @@
       html += '<div class="settings-row"><div><div class="t">학교 시간표 가져오기</div><div class="d">강의계획표 사진이나 파일로 한 번에 등록해요.</div></div>' +
         '<button class="btn btn-secondary" style="width:auto; padding:8px 14px; margin-bottom:0;" onclick="appAction(\'externalCalendarStub\')">준비 중</button></div>';
     } else {
-      html += '<button class="btn btn-secondary" onclick="appAction(\'onboardingRestart\')">예시 일정으로 튜토리얼 시작</button>';
+      html += '<button class="btn btn-secondary" onclick="appAction(\'onboardingFinishWithDemo\')">예시 일정으로 시작하기</button>';
     }
     return html;
   }
@@ -3050,10 +3044,9 @@
         ui.insightDismissedIds[args[0]] = true; break;
       }
 
-      case 'openQuickAdd': ui.quickAdd = {label:'', time:'09:00', duration:30, dateKey:curDateKey(), reminderMinutes:10}; break;
+      case 'openQuickAdd': ui.quickAdd = {label:'', time:'09:00', duration:30, dateKey:todayKey(), reminderMinutes:10}; break;
       case 'quickAddClose': ui.quickAdd = null; break;
       case 'quickAddLabel': ui.quickAdd.label = args[0]; return;
-      case 'quickAddDateQuick': ui.quickAdd.dateKey = addDaysKey(todayKey(), args[0]); break;
       case 'quickAddDurationPreset': ui.quickAdd.duration = args[0]; break;
       case 'quickAddDurationCustom': break;
       case 'quickAddDurationStep': ui.quickAdd.duration = Math.max(5, ui.quickAdd.duration+args[0]); break;
@@ -3188,8 +3181,6 @@
         showInfoToast('실제 기기에서는 여기서 Google 캘린더 연동 화면이 열려요. 지금은 프로토타입이라 연동된 것으로 가정하고 시작할게요.');
         break;
       }
-      case 'onboardingRestart': ui.onboardingDone = false; ui.onboardingStep = 0; ui.goalDraft = state.settings.myGoal || ''; break;
-
       case 'overlapDelete': {
         var odKind = args[0], odRefId = args[1];
         // 일회성 일정은 그 날 하루만을 위해 만들어진 거라 실제로 삭제해요(되돌리기 가능).
