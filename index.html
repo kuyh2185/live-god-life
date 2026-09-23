@@ -297,19 +297,6 @@
   a, a:visited{color:inherit;}
   ::-webkit-scrollbar{width:0;height:0;}
 
-  /* ── 타임 롤링 피커 ── */
-  .wheel-picker{position:relative; display:flex; justify-content:center; gap:2px; height:180px; margin:10px 0 4px;}
-  .wheel-highlight{position:absolute; left:6px; right:6px; top:72px; height:36px;
-    border-top:1px solid var(--border); border-bottom:1px solid var(--border); pointer-events:none; z-index:1;}
-  .wheel-col{width:68px; height:180px; overflow-y:scroll; scroll-snap-type:y mandatory;
-    -webkit-overflow-scrolling:touch; scrollbar-width:none;}
-  .wheel-col::-webkit-scrollbar{display:none;}
-  .wheel-pad{height:72px;}
-  .wheel-item{height:36px; display:flex; align-items:center; justify-content:center; font-size:14.5px;
-    color:var(--text-faint); scroll-snap-align:center; cursor:pointer; font-variant-numeric:tabular-nums;
-    white-space:nowrap;}
-  .wheel-item.center{color:var(--text); font-weight:800; font-size:17px;}
-
   /* ── 온보딩 ── */
   .onboard-wrap{min-height:100%; display:flex; flex-direction:column; padding:32px 26px 26px;}
   .onboard-skip{align-self:flex-end; background:none; border:none; color:var(--text-faint); font-size:12.5px; cursor:pointer; padding:6px;}
@@ -506,7 +493,7 @@
     adhocEntries: demoAdhocEntries(),
     scheduleEntries: demoScheduleEntries(),
     eventOccurrenceOverrides: {},
-    // 오늘 컨디션 체크인 — dateKey별로 {condition:'low'|'high', mustDoId, mustDoLabel, at}.
+    // 오늘 컨디션 체크인 — dateKey별로 {condition:'low'|'high', mustDoIds, mustDoLabels, at}.
     // 컨디션이 "안 좋음"일 때만 "오늘 일정 다시 짜기" 제안이 나가요(추측하지 않고 직접 답한
     // 것만 신뢰해요).
     checkins: {},
@@ -795,16 +782,27 @@
   // — 가볍게 줄이는 절충안 대신 "필수 외엔 모두 없애는" 사용자 요청을 그대로 반영해요.
   // 이 제안이 과하다 싶으면 "다르게 조정하기"에서 항목별로 직접 고르거나(가볍게 줄이기 포함)
   // AI에게 자유롭게 요청할 수 있어요.
+  // 오늘 체크인에서 "오늘 꼭 해야 함"으로 고른 항목(여러 개 가능)만 남기고, 나머지 손댈 수
+  // 있는 일정은 전부 "오늘은 건너뛰기" 후보로 제안해요. 체크인 여부와 무관하게 항상 계산해요 —
+  // 자동으로 먼저 보여줄지(hasAutoFatigueTrigger) 여부와, 실제 내용(이 함수)은 서로 다른
+  // 문제라서 분리했어요: 사용자가 "일정 조정하기"를 직접 눌렀을 땐 체크인 조건과 무관하게
+  // 항상 이 내용을 보여줘야 하거든요.
   function computeFatigueSuggestion(dateKey, now){
+    var checkin = state.checkins[dateKey];
+    var mustDoIds = (checkin && checkin.mustDoIds) || [];
+    var toDrop = computeAdjustableItems(dateKey, now)
+      .filter(function(r){ return mustDoIds.indexOf(r.entryId)===-1; })
+      .map(function(r){ return {refId:r.refId, kind:r.kind, label:r.label, time:r.time, minVersion:null, duration:r.duration}; });
+    return { withMinVersion: [], withoutMinVersion: toDrop };
+  }
+  // 오늘 탭에 "오늘 일정 다시 짜기"를 먼저 나서서(사용자가 누르기 전에) 보여줄 근거가 있는지만
+  // 판단해요 — 컨디션 체크에서 "안 좋음"이라고 직접 답했거나("추측 안 함"), 비서 성향이
+  // "적극적으로"이고 객관적으로 일정이 깨어있는 시간보다 많을 때만 그래요.
+  function hasAutoFatigueTrigger(dateKey){
     var checkin = state.checkins[dateKey];
     var conditionBad = !!(checkin && checkin.condition==='low');
     var objectivelyOverloaded = state.settings.interventionLevel==='active' && computeAvailableMinutesToday(dateKey) <= 0;
-    if(!conditionBad && !objectivelyOverloaded) return { withMinVersion: [], withoutMinVersion: [] };
-    var mustDoId = checkin && checkin.mustDoId;
-    var toDrop = computeAdjustableItems(dateKey, now)
-      .filter(function(r){ return r.entryId !== mustDoId; })
-      .map(function(r){ return {refId:r.refId, kind:r.kind, label:r.label, time:r.time, minVersion:null, duration:r.duration}; });
-    return { withMinVersion: [], withoutMinVersion: toDrop };
+    return conditionBad || objectivelyOverloaded;
   }
 
   // ───────────────────────── 액션 (store 로직 포팅) ─────────────────────────
@@ -993,7 +991,7 @@
 
   // ───────────────────────── 렌더 ─────────────────────────
   var root = document.getElementById('phone');
-  function render(){ root.innerHTML = renderPhone(); initWheels(); if(ui.share) drawShareCard(); }
+  function render(){ root.innerHTML = renderPhone(); if(ui.share) drawShareCard(); }
 
   function iconToday(){ return '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h9M4 12h9M4 18h5"/><path d="M15.5 6.5l1.8 1.8L21 4.5"/></svg>'; }
   function iconSchedule(){ return '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>'; }
@@ -1572,133 +1570,29 @@
   }
 
   // ── 타임 롤링 피커 (업다운 스테퍼 대신 iOS 스타일로 스크롤해서 고르는 방식) ──
+  // ── 시간·소요시간·알림 값 접근자 — 롤링 휠 대신 위/아래 화살표 스테퍼로 바꿨지만(요청에
+  // 따라), 어떤 필드를 고치는 중인지(namespace)에 따라 값을 읽고 쓰는 이 구조는 그대로 재사용해요.
   function timeRefFor(ns){
     if(ns==='form') return { get:function(){ return ui.form.draft.time; }, set:function(v){ ui.form.draft.time = v; } };
     if(ns==='sheet') return { get:function(){ return ui.sheet.draftTime; }, set:function(v){ ui.sheet.draftTime = v; } };
     if(ns==='quickAdd') return { get:function(){ return ui.quickAdd.time; }, set:function(v){ ui.quickAdd.time = v; } };
     return null;
   }
-  function renderTimeWheel(time, ns){
+  // 5분 단위로 시간을 조정해요(자정을 넘나들면 자연스럽게 다음/이전 날로 wrap돼요).
+  function renderTimeStepper(time, ns, label){
     var hm = parseHM(time);
-    var pm = hm.hour >= 12;
-    var h12 = hm.hour % 12; if(h12===0) h12 = 12;
-    var minIdx = Math.round(hm.minute/5) % 12;
-    var hourLabels = []; for(var i=1;i<=12;i++) hourLabels.push(String(i));
-    var minLabels = []; for(var m=0;m<60;m+=5) minLabels.push(pad2(m));
-    var html = '<div class="wheel-picker"><div class="wheel-highlight"></div>';
-    html += wheelColumn(ns, 'meridiem', ['오전','오후'], pm?1:0);
-    html += wheelColumn(ns, 'hour', hourLabels, h12-1);
-    html += wheelColumn(ns, 'minute', minLabels, minIdx);
-    html += '</div>';
-    return html;
+    return '<div class="stepper-row">'+stepperHtml(label||'시작 시간', meridiemTimeLabel(hm.hour,hm.minute),
+      "appAction('timeStep','"+ns+"',-5)", "appAction('timeStep','"+ns+"',5)")+'</div>';
   }
-  function wheelColumn(ns, role, labels, curIdx, kind){
-    var html = '<div class="wheel-col" data-ns="'+ns+'" data-role="'+role+'" data-kind="'+(kind||'time')+'"><div class="wheel-pad"></div>';
-    labels.forEach(function(lbl, i){ html += '<div class="wheel-item'+(i===curIdx?' center':'')+'">'+esc(lbl)+'</div>'; });
-    html += '<div class="wheel-pad"></div></div>';
-    return html;
-  }
-  // ── 소요시간 롤링 피커 — 시작 시간 롤과 같은 iOS 스타일 스크롤 방식을 그대로 재사용해요.
-  // 왼쪽 롤: 0~12시간, 오른쪽 롤: 5분 단위(0~55분), 최소 5분.
   function durationRefFor(ns){
     if(ns==='form') return { get:function(){ return ui.form.draft.duration; }, set:function(v){ ui.form.draft.duration = v; } };
     if(ns==='sheet') return { get:function(){ return ui.sheet.draftDuration; }, set:function(v){ ui.sheet.draftDuration = v; } };
     if(ns==='quickAdd') return { get:function(){ return ui.quickAdd.duration; }, set:function(v){ ui.quickAdd.duration = v; } };
     return null;
   }
-  function durationIndexFor(role, duration){
-    var d = Math.max(5, Math.min(720, duration));
-    var h = Math.floor(d/60), m = d%60;
-    if(role==='dhour') return Math.min(12, h);
-    return Math.round(m/5) % 12;
-  }
-  function renderDurationWheel(duration, ns){
-    var d = Math.max(5, Math.min(720, duration));
-    var h = Math.floor(d/60), m = d%60;
-    var hourLabels = []; for(var i=0;i<=12;i++) hourLabels.push(String(i)+'시간');
-    var minLabels = []; for(var mm=0; mm<60; mm+=5) minLabels.push(pad2(mm)+'분');
-    var html = '<div class="wheel-picker"><div class="wheel-highlight"></div>';
-    html += wheelColumn(ns, 'dhour', hourLabels, Math.min(12,h), 'duration');
-    html += wheelColumn(ns, 'dminute', minLabels, Math.round(m/5)%12, 'duration');
-    html += '</div>';
-    return html;
-  }
-  function settleDurationWheel(col, ns, role){
-    if((ns==='form' && !ui.form) || (ns==='sheet' && !ui.sheet) || (ns==='quickAdd' && !ui.quickAdd)) return;
-    var items = col.querySelectorAll('.wheel-item');
-    if(!items.length) return;
-    var idx = Math.round(col.scrollTop/36);
-    idx = Math.max(0, Math.min(items.length-1, idx));
-    col.scrollTo({top: idx*36, behavior:'smooth'});
-    updateWheelCenter(col, idx);
-    var ref = durationRefFor(ns); if(!ref) return;
-    var cur = Math.max(5, Math.min(720, ref.get()));
-    var h = Math.floor(cur/60), m = cur%60;
-    if(role==='dhour') h = idx; else if(role==='dminute') m = idx*5;
-    var next = h*60+m;
-    if(next < 5) next = 5;
-    ref.set(next);
-  }
-  function wheelIndexFor(role, hm){
-    if(role==='meridiem') return hm.hour>=12 ? 1 : 0;
-    if(role==='hour'){ var h12 = hm.hour%12; if(h12===0) h12=12; return h12-1; }
-    return Math.round(hm.minute/5) % 12;
-  }
-  function updateWheelCenter(col, idx){
-    var items = col.querySelectorAll('.wheel-item');
-    Array.prototype.forEach.call(items, function(it,i){ it.classList.toggle('center', i===idx); });
-  }
-  function settleWheel(col, ns, role){
-    // 스크롤 디바운스 타이머가 늦게 발동했을 때, 그 사이 모달이 닫혀서 draft가 사라졌을 수
-    // 있어요(예: 다음 주 쉬기 버튼처럼 다른 액션이 먼저 렌더를 다시 그린 경우) — 그럴 땐 조용히 무시해요.
-    if((ns==='form' && !ui.form) || (ns==='sheet' && !ui.sheet) || (ns==='quickAdd' && !ui.quickAdd)) return;
-    var items = col.querySelectorAll('.wheel-item');
-    if(!items.length) return;
-    var idx = Math.round(col.scrollTop/36);
-    idx = Math.max(0, Math.min(items.length-1, idx));
-    col.scrollTo({top: idx*36, behavior:'smooth'});
-    updateWheelCenter(col, idx);
-    var ref = timeRefFor(ns); if(!ref) return;
-    var hm = parseHM(ref.get());
-    if(role==='meridiem'){
-      var nowPM = idx===1, wasPM = hm.hour>=12;
-      if(wasPM !== nowPM) hm.hour = nowPM ? (hm.hour+12)%24 : (hm.hour-12+24)%24;
-    } else if(role==='hour'){
-      var h12sel = idx+1, pm = hm.hour>=12;
-      hm.hour = (h12sel%12) + (pm?12:0);
-    } else if(role==='minute'){
-      hm.minute = idx*5;
-    }
-    ref.set(formatHM(hm.hour, hm.minute));
-  }
-  function initWheels(){
-    var cols = root.querySelectorAll('.wheel-col');
-    Array.prototype.forEach.call(cols, function(col){
-      var ns = col.getAttribute('data-ns'), role = col.getAttribute('data-role');
-      var kind = col.getAttribute('data-kind') || 'time';
-      var ref = kind==='duration' ? durationRefFor(ns) : kind==='reminder' ? reminderRefFor(ns) : timeRefFor(ns);
-      if(!ref) return;
-      var idx = kind==='duration' ? durationIndexFor(role, ref.get()) : kind==='reminder' ? reminderIndexFor(role, ref.get()) : wheelIndexFor(role, parseHM(ref.get()));
-      col.scrollTop = idx*36;
-      updateWheelCenter(col, idx);
-      function settleThisWheel(){
-        if(kind==='duration') settleDurationWheel(col, ns, role);
-        else if(kind==='reminder') settleReminderWheel(col, ns, role);
-        else settleWheel(col, ns, role);
-      }
-      col.onscroll = function(){
-        clearTimeout(col._settleTimer);
-        col._settleTimer = setTimeout(settleThisWheel, 130);
-      };
-      var items = col.querySelectorAll('.wheel-item');
-      Array.prototype.forEach.call(items, function(item, i){
-        item.onclick = function(){
-          col.scrollTo({top:i*36, behavior:'smooth'});
-          clearTimeout(col._settleTimer);
-          col._settleTimer = setTimeout(settleThisWheel, 260);
-        };
-      });
-    });
+  function renderDurationStepper(duration, ns, label){
+    return '<div class="stepper-row">'+stepperHtml(label||'소요 시간', formatDurationHM(duration),
+      "appAction('durationStep','"+ns+"',-5)", "appAction('durationStep','"+ns+"',5)")+'</div>';
   }
 
   function tabBtn(key, icon, label){
@@ -1805,9 +1699,8 @@
     // 겹침이 있으면 먼저 그것부터 처리하고("순서대로"), 겹침이 없거나 해결/보류한 뒤에만 컨디션
     // 조정을 제안해요. 두 문제가 동시에 있어도 한 화면에 합치지 않아요.
     if(briefing){
-      var fatigue = computeFatigueSuggestion(dateKey, now);
       var showActions = state.settings.interventionLevel !== 'quiet';
-      var hasFatigueTargets = fatigue.withMinVersion.length>0 || fatigue.withoutMinVersion.length>0;
+      var hasFatigueTargets = hasAutoFatigueTrigger(dateKey);
       var overlapsToday = computeOverlapPairs(dateKey);
       var hasOverlaps = overlapsToday.length>0;
 
@@ -1914,12 +1807,12 @@
       body += '</div>';
     } else if(view==='adjustTime'){
       body += '<div class="sheet-sub">오늘만 시간을 바꿔볼까요? (원래 일정은 그대로예요)</div>';
-      body += renderTimeWheel(s.draftTime, 'sheet');
+      body += renderTimeStepper(s.draftTime, 'sheet');
       body += '<div style="margin-top:14px;">'+btn('이 시간으로 저장', 'primary', "appAction('sheetApplyAdjustTime')")+btn('뒤로', 'ghost', "appAction('sheetSetView','main')")+'</div>';
     } else if(view==='adjustDuration'){
       body += '<div class="sheet-sub">시작 시간과 소요 시간을 조정해요</div>';
-      body += renderTimeWheel(s.draftTime, 'sheet');
-      body += '<div class="field-label">소요 시간</div>' + durationPicker(s.draftDuration, 'sheetDuration');
+      body += renderTimeStepper(s.draftTime, 'sheet');
+      body += durationPicker(s.draftDuration, 'sheetDuration');
       body += '<div style="margin-top:14px;">'+btn('저장', 'primary', "appAction('sheetApplyAdjustDuration')")+btn('뒤로', 'ghost', "appAction('sheetSetView','main')")+'</div>';
     } else if(view==='reason'){
       body += '<div class="sheet-sub">왜 그랬는지 알려주시면 다음에 더 잘 도와드릴게요</div><div class="preset-row" style="justify-content:flex-start;">';
@@ -1958,13 +1851,11 @@
       html += chip(formatDurationHM(m), duration===m, "appAction('"+ns+"Preset',"+m+")", true);
     });
     html += '</div>';
-    html += renderDurationWheel(duration, baseNs);
+    html += renderDurationStepper(duration, baseNs);
     return html;
   }
 
-  // ── 시작 전 알림 (몇 분 전에 알려줄지) — 소요 시간 휠과 같은 "시간 · 분" 두 칸 구조로
-  // 통일했어요. (예전엔 "1시간 30분 전" 같은 긴 라벨 한 칸짜리 휠이었는데, 좁은 휠 칸 폭에서
-  // 줄바꿈되면서 레이아웃이 깨졌어요 — 숫자만 담은 두 칸으로 바꿔서 해결했어요.)
+  // ── 시작 전 알림 (몇 분 전에 알려줄지) — 위/아래 화살표 스테퍼로 5분 단위로 조정해요.
   // 반복 일정은 이 값을 한 번 정해두면 매 회차마다 계속 쓰이고(일정 자체에 저장),
   // 일회성 일정은 추가할 때(빠른 추가·새 일정 폼) 그때그때 골라요.
   var REMINDER_MAX_HOUR = 3;
@@ -1977,36 +1868,9 @@
     if(ns==='quickAdd') return { get:function(){ return ui.quickAdd.reminderMinutes; }, set:function(v){ ui.quickAdd.reminderMinutes = v; } };
     return null;
   }
-  function reminderIndexFor(role, value){
-    var v = Math.max(0, Math.min(REMINDER_MAX_HOUR*60, value||0));
-    var h = Math.floor(v/60), m = v%60;
-    if(role==='rhour') return Math.min(REMINDER_MAX_HOUR, h);
-    return Math.round(m/5) % 12;
-  }
-  function reminderPicker(value, ns){
-    var v = Math.max(0, Math.min(REMINDER_MAX_HOUR*60, value||0));
-    var h = Math.floor(v/60), m = v%60;
-    var hourLabels = []; for(var i=0;i<=REMINDER_MAX_HOUR;i++) hourLabels.push(i+'시간');
-    var minLabels = []; for(var mm=0; mm<60; mm+=5) minLabels.push(pad2(mm)+'분');
-    var html = '<div class="wheel-picker"><div class="wheel-highlight"></div>';
-    html += wheelColumn(ns, 'rhour', hourLabels, Math.min(REMINDER_MAX_HOUR,h), 'reminder');
-    html += wheelColumn(ns, 'rminute', minLabels, Math.round(m/5)%12, 'reminder');
-    html += '</div>';
-    return html;
-  }
-  function settleReminderWheel(col, ns, role){
-    if((ns==='form' && !ui.form) || (ns==='quickAdd' && !ui.quickAdd)) return;
-    var items = col.querySelectorAll('.wheel-item');
-    if(!items.length) return;
-    var idx = Math.round(col.scrollTop/36);
-    idx = Math.max(0, Math.min(items.length-1, idx));
-    col.scrollTo({top: idx*36, behavior:'smooth'});
-    updateWheelCenter(col, idx);
-    var ref = reminderRefFor(ns); if(!ref) return;
-    var cur = Math.max(0, Math.min(REMINDER_MAX_HOUR*60, ref.get()||0));
-    var h = Math.floor(cur/60), m = cur%60;
-    if(role==='rhour') h = idx; else if(role==='rminute') m = idx*5;
-    ref.set(h*60+m);
+  function reminderPicker(value, ns, label){
+    return '<div class="stepper-row">'+stepperHtml(label||'시작 전 알림', reminderLabel(value),
+      "appAction('reminderStep','"+ns+"',-5)", "appAction('reminderStep','"+ns+"',5)")+'</div>';
   }
 
   // ── 겹친 일정 해결 시트 (v40: 컨디션 조정과 완전히 분리) ──
@@ -2201,10 +2065,12 @@
   function buildAdjustReason(dateKey, checkin, changeCount, totalReducedMinutes){
     var parts = [];
     if(checkin && checkin.condition==='low') parts.push('오늘 컨디션이 안 좋다고 하셨고');
-    else parts.push('오늘 일정이 깨어있는 시간보다 많아서');
+    else if(hasAutoFatigueTrigger(dateKey)) parts.push('오늘 일정이 깨어있는 시간보다 많아서');
+    else parts.push('직접 오늘 일정을 조정하고 싶다고 하셨어서');
     var insight = computeRecurringInsight();
     if(insight) parts.push('"'+esc(insight.event.label)+'"을 최근 자주 못 지켰던 것도 고려해서');
-    var mustDoPart = checkin && checkin.mustDoLabel ? ('"'+esc(checkin.mustDoLabel)+'"만 남기고 ') : '';
+    var mustDoLabels = (checkin && checkin.mustDoLabels) || [];
+    var mustDoPart = mustDoLabels.length ? ('"'+mustDoLabels.map(esc).join('", "')+'"만 남기고 ') : '';
     return parts.join(', ') +
       ' '+mustDoPart+changeCount+'개 일정을 오늘 하루 빼고, 부담을 '+formatDurationHM(totalReducedMinutes)+' 덜어드리려고 해요.';
   }
@@ -2215,20 +2081,6 @@
   // 묻는 항목이라 빼고 컨디션 하나로 합쳤고, 컨디션도 안 좋음/좋음 둘 중 하나만 고르게 했어요.
   function renderCheckinModal(){
     var c = ui.checkin;
-    // 컨디션이 "안 좋음"이면 저장 직후 바로 같은 모달에서 "체크한 것 외엔 제외할까요?"라고
-    // 물어봐요 — 이전엔 저장 후 오늘 탭으로 돌아가서 제안 버튼을 따로 찾아 눌러야 해서
-    // 한 단계가 더 있었어요. "아니요"를 고르면 항목별로 직접 고르는 화면으로 바로 넘어가요.
-    if(c.view==='confirm'){
-      var saved = state.checkins[todayKey()];
-      var mustDoLabel = saved && saved.mustDoLabel;
-      var body2 = '<div class="sheet-sub" style="margin-bottom:16px;">' +
-        (mustDoLabel ? ('"'+esc(mustDoLabel)+'"만 남기고 ') : '') +
-        '오늘 남은 일정을 모두 제외해드릴까요?</div>';
-      body2 += btn('네, 제외해주세요', 'primary', "appAction('checkinConfirmExclude')");
-      body2 += btn('아니요, 제가 고를게요', 'secondary', "appAction('checkinConfirmManual')");
-      return '<div class="overlay" onclick="appAction(\'checkinClose\')"><div class="sheet" onclick="event.stopPropagation()">' +
-        '<div class="sheet-title">오늘 일정을 조정할까요?</div>'+body2+'</div></div>';
-    }
     var dateKey = todayKey();
     var candidateRows = buildTimetableForDate(dateKey).filter(function(r){ return !r.isFixed; });
     var availableMin = computeAvailableMinutesToday(dateKey);
@@ -2240,16 +2092,18 @@
     body += '<div class="field-label">지금 컨디션은요?</div><div class="preset-row">';
     CONDITION_OPTIONS.forEach(function(o){ body += chip(o[1], c.condition===o[0], "appAction('checkinSetCondition','"+o[0]+"')"); });
     body += '</div>';
-    body += '<div class="field-label">오늘 꼭 해야 하는 일 하나는요? (선택)</div>';
-    if(candidateRows.length===0){
-      body += '<div class="section-sub" style="margin-top:0;">오늘 등록된 일정이 없어요.</div>';
-    } else {
-      body += '<div class="preset-row">';
-      candidateRows.forEach(function(r){ body += chip(r.label, c.mustDoId===r.entryId, "appAction('checkinSetMustDo','"+r.entryId+"')", true); });
-      body += '</div>';
-    }
+    // 컨디션이 "좋음"이면 오늘 일정을 그대로 다 할 수 있다는 뜻이라, "꼭 해야 하는 일"을 따로
+    // 고를 이유가 없어요("안 좋음"일 때만 무엇을 남길지가 의미 있는 질문이에요).
     if(c.condition==='low'){
-      body += '<div class="section-sub" style="margin-top:6px;">저장하면 바로, 위에서 고른 "꼭 해야 하는 일"만 남기고 나머지를 오늘 제외할지 물어볼게요.</div>';
+      body += '<div class="field-label">오늘 꼭 해야 하는 일은요? (여러 개 골라도 돼요)</div>';
+      if(candidateRows.length===0){
+        body += '<div class="section-sub" style="margin-top:0;">오늘 등록된 일정이 없어요.</div>';
+      } else {
+        body += '<div class="preset-row">';
+        candidateRows.forEach(function(r){ body += chip(r.label, c.mustDoIds.indexOf(r.entryId)!==-1, "appAction('checkinSetMustDo','"+r.entryId+"')", true); });
+        body += '</div>';
+      }
+      body += '<div class="section-sub" style="margin-top:6px;">저장하면 바로, 위에서 고른 것만 남기고 나머지를 오늘 제외할지 물어볼게요.</div>';
     }
     body += '<div style="margin-top:16px;">'+btn('저장', 'primary', "appAction('checkinSave')")+btn('취소', 'ghost', "appAction('checkinClose')")+'</div>';
     return '<div class="overlay" onclick="appAction(\'checkinClose\')"><div class="sheet" onclick="event.stopPropagation()">' +
@@ -2418,9 +2272,9 @@
     var q = ui.quickAdd;
     var body = '<div class="field-label" style="margin-top:0;">이름</div>' +
       '<input class="textfield" value="'+esc(q.label)+'" placeholder="예: 은행 다녀오기" oninput="appAction(\'quickAddLabel\',this.value)"/>';
-    body += renderTimeWheel(q.time, 'quickAdd');
-    body += '<div class="field-label">소요 시간</div>'+durationPicker(q.duration, 'quickAddDuration');
-    body += '<div class="field-label">시작 전 알림</div>'+reminderPicker(q.reminderMinutes, 'quickAdd');
+    body += renderTimeStepper(q.time, 'quickAdd');
+    body += durationPicker(q.duration, 'quickAddDuration');
+    body += reminderPicker(q.reminderMinutes, 'quickAdd');
     body += '<div style="margin-top:16px;">'+btn('추가', 'primary', "appAction('quickAddSave')")+btn('취소', 'ghost', "appAction('quickAddClose')")+'</div>';
     return '<div class="overlay" onclick="appAction(\'quickAddClose\')"><div class="sheet" onclick="event.stopPropagation()">' +
       '<div class="sheet-title">빠른 일정 추가 (오늘)</div>'+body+'</div></div>';
@@ -2467,16 +2321,16 @@
       });
       body += '</div>';
     } else {
-      body += '<div class="field-label">날짜</div>'+datePicker(d.dateKey);
+      body += '<div class="field-label">날짜</div>'+renderDateCalendar(f.initial.dateKey, ui.form.dateCalOffset||0, d.dateKey);
     }
-    body += '<div class="field-label">시작 시간</div>'+renderTimeWheel(d.time, 'form');
-    body += '<div class="field-label">소요 시간</div>'+durationPicker(d.duration, 'formDuration');
+    body += renderTimeStepper(d.time, 'form');
+    body += durationPicker(d.duration, 'formDuration');
 
     body += '<div class="section-title" style="margin:18px 0 4px;">세부 설정</div>';
     body += '<div class="settings-row" style="padding:10px 0;"><div><div class="t">오늘 꼭 해야 함</div></div>' +
       toggleTrack(d.isFixed, "appAction('formToggle','isFixed')") + '</div>';
     body += '<div class="field-label">메모 (선택)</div><input class="textfield" value="'+esc(d.memo)+'" placeholder="" oninput="appAction(\'formField\',\'memo\',this.value)"/>';
-    body += '<div class="field-label">시작 전 알림'+(f.kind==='session'?' (매 회차 공통)':'')+'</div>'+reminderPicker(d.reminderMinutes, 'form');
+    body += reminderPicker(d.reminderMinutes, 'form', '시작 전 알림'+(f.kind==='session'?' (매 회차 공통)':''));
 
     body += '<div style="margin-top:16px;">'+btn('저장', 'primary', "appAction('formSave')");
     if(f.editingId) body += btn('이 일정 삭제', 'danger', "appAction('formDelete')");
@@ -2484,15 +2338,35 @@
 
     return '<div class="overlay" onclick="appAction(\'formClose\')"><div class="sheet" onclick="event.stopPropagation()">'+body+'</div></div>';
   }
-  function datePicker(dateKey){
-    var p = dateKey.split('-').map(Number);
-    var wd = WEEKDAY_LABELS[weekdayOfKey(dateKey)];
-    var html = '<div class="big-time">'+p[1]+'월 '+p[2]+'일 ('+wd+')</div>';
-    html += '<div class="stepper-row">'+stepperHtml('날짜', p[2]+'일', "appAction('formDateStep',-1)", "appAction('formDateStep',1)")+'</div>';
-    html += '<div class="preset-row">';
+  // 날짜를 직접 달력에서 골라요(예전엔 -/+ 스테퍼로 하루씩만 넘길 수 있었는데, 몇 주 뒤
+  // 날짜를 잡으려면 여러 번 눌러야 해서 답답했어요). anchorKey는 폼을 열었을 때의 날짜(고정,
+  // 달력이 계속 그 달 기준으로 안정적으로 움직이게 해요), monthOffset은 anchorKey 기준 이동한
+  // 달 수, selectedKey는 지금 골라둔 날짜예요.
+  function renderDateCalendar(anchorKey, monthOffset, selectedKey){
+    var aP = anchorKey.split('-').map(Number);
+    var base = new Date(aP[0], aP[1]-1+monthOffset, 1);
+    var year = base.getFullYear(), month = base.getMonth();
+    var firstWd = new Date(year, month, 1).getDay();
+    var daysInMonth = new Date(year, month+1, 0).getDate();
+    var html = '<div class="cal-head"><button class="cal-nav-btn" onclick="appAction(\'formDateCalMonth\',-1)">‹</button>' +
+      '<div class="t">'+year+'년 '+(month+1)+'월</div>' +
+      '<button class="cal-nav-btn" onclick="appAction(\'formDateCalMonth\',1)">›</button></div>';
+    html += '<div class="cal-grid">';
+    WEEKDAY_LABELS.forEach(function(w, wi){ html += '<div class="cal-wd'+(wi===0?' sun':'')+'">'+w+'</div>'; });
+    for(var i=0;i<firstWd;i++) html += '<div class="cal-cell cal-cell-blank"></div>';
+    for(var d=1; d<=daysInMonth; d++){
+      var dk = year+'-'+pad2(month+1)+'-'+pad2(d);
+      var cls = 'cal-cell';
+      if(weekdayOfKey(dk)===0 || koreanHolidayName(dk)) cls += ' holiday';
+      if(dk===todayKey()) cls += ' today';
+      if(dk===selectedKey) cls += ' selected';
+      html += '<div class="'+cls+'" onclick="appAction(\'formDateCalPick\',\''+dk+'\')">'+d+'</div>';
+    }
+    html += '</div>';
+    html += '<div class="preset-row" style="justify-content:flex-start;">';
     [['오늘',0],['내일',1],['모레',2]].forEach(function(o){
       var key = addDaysKey(todayKey(), o[1]);
-      html += chip(o[0], dateKey===key, "appAction('formDateQuick',"+o[1]+")", true);
+      html += chip(o[0], selectedKey===key, "appAction('formDateQuick',"+o[1]+")", true);
     });
     html += '</div>';
     return html;
@@ -2925,8 +2799,6 @@
         ui.sheet = null; break;
       }
       case 'sheetDurationPreset': ui.sheet.draftDuration = args[0]; break;
-      case 'sheetDurationCustom': break;
-      case 'sheetDurationStep': ui.sheet.draftDuration = Math.max(5, ui.sheet.draftDuration + args[0]); break;
       case 'sheetApplyAdjustDuration': {
         var r3 = findRow(ui.sheet.entryId, ui.sheet.dateKey);
         var patch = {time: ui.sheet.draftTime, duration: ui.sheet.draftDuration};
@@ -3032,7 +2904,7 @@
         ui.routineModalOpen = false;
         var dkPW = todayKey();
         var prevPW = state.checkins[dkPW] || {};
-        ui.checkin = { condition: prevPW.condition || null, mustDoId: prevPW.mustDoId || null };
+        ui.checkin = { condition: prevPW.condition || null, mustDoIds: (prevPW.mustDoIds||[]).slice() };
         break;
       }
       case 'previewSleepRoutine': {
@@ -3049,35 +2921,30 @@
       case 'openCheckin': {
         var dkO = todayKey();
         var prevC = state.checkins[dkO] || {};
-        ui.checkin = { condition: prevC.condition || null, mustDoId: prevC.mustDoId || null };
+        ui.checkin = { condition: prevC.condition || null, mustDoIds: (prevC.mustDoIds||[]).slice() };
         break;
       }
       case 'checkinClose': ui.checkin = null; break;
       case 'checkinSetCondition': ui.checkin.condition = args[0]; break;
-      case 'checkinSetMustDo': ui.checkin.mustDoId = args[0]; break;
+      case 'checkinSetMustDo': {
+        var mdIdx = ui.checkin.mustDoIds.indexOf(args[0]);
+        if(mdIdx===-1) ui.checkin.mustDoIds.push(args[0]); else ui.checkin.mustDoIds.splice(mdIdx,1);
+        break;
+      }
       case 'checkinSave': {
         var dkS = todayKey();
-        var mustDoLabel = null;
-        if(ui.checkin.mustDoId){
-          var mrow = buildTimetableForDate(dkS).find(function(r){ return r.entryId===ui.checkin.mustDoId; });
-          if(mrow) mustDoLabel = mrow.label;
-        }
-        state.checkins[dkS] = { condition: ui.checkin.condition, mustDoId: ui.checkin.mustDoId,
-          mustDoLabel: mustDoLabel, at: new Date().toISOString() };
-        if(ui.checkin.condition==='low') ui.checkin.view = 'confirm'; else ui.checkin = null;
-        break;
-      }
-      case 'checkinConfirmExclude': {
-        var sCheckin = computeFatigueSuggestion(todayKey(), now);
-        sCheckin.withMinVersion.forEach(applyMiniVersion);
-        sCheckin.withoutMinVersion.forEach(function(item){ setEntryStatus(item.kind, item.refId, todayKey(), 'excused', {reason:'too_tired'}); });
+        var savedCondition = ui.checkin.condition;
+        var mustDoLabels = ui.checkin.mustDoIds.map(function(id){
+          var mrow = buildTimetableForDate(dkS).find(function(r){ return r.entryId===id; });
+          return mrow ? mrow.label : null;
+        }).filter(function(l){ return !!l; });
+        state.checkins[dkS] = { condition: savedCondition, mustDoIds: ui.checkin.mustDoIds.slice(),
+          mustDoLabels: mustDoLabels, at: new Date().toISOString() };
         ui.checkin = null;
-        showInfoToast('체크한 항목 외에는 오늘 일정에서 제외했어요.');
-        break;
-      }
-      case 'checkinConfirmManual': {
-        ui.checkin = null;
-        ui.energy = {view:'manual', doneIds:[], aiText:'', aiLoading:false, aiError:null, aiPlan:null, aiItems:null};
+        // 컨디션이 안 좋다고 하면, 오늘 탭으로 돌아가 버튼을 따로 찾을 필요 없이 바로 "체크한
+        // 것 외엔 제외할까요?" 화면(에너지 조정 모달의 summary)으로 이어져요 — "일정
+        // 조정하기"를 직접 눌렀을 때와 완전히 같은 화면이라 어느 쪽으로 들어와도 일관돼요.
+        if(savedCondition==='low') ui.energy = {view:'summary', doneIds:[], aiText:'', aiLoading:false, aiError:null, aiPlan:null, aiItems:null};
         break;
       }
 
@@ -3097,8 +2964,6 @@
       case 'quickAddClose': ui.quickAdd = null; break;
       case 'quickAddLabel': ui.quickAdd.label = args[0]; return;
       case 'quickAddDurationPreset': ui.quickAdd.duration = args[0]; break;
-      case 'quickAddDurationCustom': break;
-      case 'quickAddDurationStep': ui.quickAdd.duration = Math.max(5, ui.quickAdd.duration+args[0]); break;
       case 'quickAddSave': {
         if(!ui.quickAdd.label.trim()) return;
         addAdhocEntry({label:ui.quickAdd.label.trim(), dateKey:ui.quickAdd.dateKey, time:ui.quickAdd.time,
@@ -3128,10 +2993,29 @@
         ui.form.draft.days = days; break;
       }
       case 'formDurationPreset': ui.form.draft.duration = args[0]; break;
-      case 'formDurationCustom': break;
-      case 'formDurationStep': ui.form.draft.duration = Math.max(5, ui.form.draft.duration+args[0]); break;
-      case 'formDateStep': ui.form.draft.dateKey = addDaysKey(ui.form.draft.dateKey, args[0]); break;
-      case 'formDateQuick': ui.form.draft.dateKey = addDaysKey(todayKey(), args[0]); break;
+      case 'formDateQuick': ui.form.draft.dateKey = addDaysKey(todayKey(), args[0]); ui.form.dateCalOffset = 0; break;
+      case 'formDateCalMonth': ui.form.dateCalOffset = (ui.form.dateCalOffset||0) + args[0]; break;
+      case 'formDateCalPick': ui.form.draft.dateKey = args[0]; break;
+
+      // ── 시간·소요시간·알림 스테퍼(위/아래 화살표) — 어느 필드든 namespace만 다르게
+      // 넘기면 같은 로직으로 처리돼요(new 일정 폼/빠른 추가/일정 상세 시트 셋 다 공용).
+      case 'timeStep': {
+        var refT = timeRefFor(args[0]); if(!refT) break;
+        var hmT = parseHM(refT.get());
+        var totalT = ((hmT.hour*60+hmT.minute + args[1]) % 1440 + 1440) % 1440;
+        refT.set(formatHM(Math.floor(totalT/60), totalT%60));
+        break;
+      }
+      case 'durationStep': {
+        var refD = durationRefFor(args[0]); if(!refD) break;
+        refD.set(Math.max(5, Math.min(720, refD.get()+args[1])));
+        break;
+      }
+      case 'reminderStep': {
+        var refR = reminderRefFor(args[0]); if(!refR) break;
+        refR.set(Math.max(0, Math.min(REMINDER_MAX_HOUR*60, (refR.get()||0)+args[1])));
+        break;
+      }
       case 'formSave': {
         var fm = ui.form, d = fm.draft;
         if(!d.label.trim()){ alert('이름을 입력해주세요'); return; }
@@ -3297,11 +3181,10 @@
         break;
       }
       case 'chatOpenFatigue': {
-        // "다르게 조정하기"(adjust)로 바로 보내요 — summary(제안대로 적용)는 컨디션 체크에서
-        // "안 좋음"이라고 직접 답했을 때만 내용이 있어서, 체크인 여부와 무관하게 항상 뭔가
-        // 보여주는 adjust가 채팅에서 넘어온 경우엔 더 맞아요.
+        // 컨디션 체크의 "제외할까요?" 확인과 완전히 같은 화면(summary)으로 보내요 — 어느
+        // 경로로 들어오든 "체크한 항목 외엔 오늘 제외할까요?"부터 먼저 물어봐요.
         ui.chatOpen = false;
-        ui.energy = {view:'adjust', doneIds:[], aiText:'', aiLoading:false, aiError:null, aiPlan:null, aiItems:null};
+        ui.energy = {view:'summary', doneIds:[], aiText:'', aiLoading:false, aiError:null, aiPlan:null, aiItems:null};
         break;
       }
       case 'chatConfirm': {
@@ -3370,7 +3253,7 @@
         reminderMinutes:en.reminderMinutes||0} :
         {label:'', time:'09:00', days:[], dateKey:curDateKey(), duration:30, isFixed:false, minVersion:'', memo:'', reminderMinutes:10};
     }
-    ui.form = { kind:kind, editingId:id||null, draft: draft, initial: Object.assign({}, draft) };
+    ui.form = { kind:kind, editingId:id||null, draft: draft, initial: Object.assign({}, draft), dateCalOffset:0 };
   }
 
   function findFatigueItem(refId){
