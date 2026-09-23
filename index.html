@@ -186,11 +186,6 @@
   .textfield{width:100%; border:1px solid var(--border); border-radius:12px; background:var(--surface);
     color:var(--text); font-size:14px; padding:10px 13px; margin-bottom:12px; font-family:inherit;}
   .textfield:focus{outline:2px solid var(--accent); outline-offset:1px;}
-  .toggle-adv{display:flex; justify-content:space-between; align-items:center; padding:10px 0;
-    border-top:1px solid var(--border); margin-top:8px; cursor:pointer; background:none; border-left:none;
-    border-right:none; border-bottom:none; width:100%; color:var(--text);}
-  .toggle-adv .t{font-size:14px; font-weight:700;}
-  .toggle-adv .c{font-size:12px; color:var(--text-muted);}
   .toast-wrap{position:fixed; left:0; right:0; bottom:96px; display:flex; justify-content:center;
     padding:0 20px; z-index:80; pointer-events:none;}
   .toast{pointer-events:auto; display:flex; align-items:center; gap:14px; background:var(--text);
@@ -311,7 +306,8 @@
   .wheel-col::-webkit-scrollbar{display:none;}
   .wheel-pad{height:72px;}
   .wheel-item{height:36px; display:flex; align-items:center; justify-content:center; font-size:14.5px;
-    color:var(--text-faint); scroll-snap-align:center; cursor:pointer; font-variant-numeric:tabular-nums;}
+    color:var(--text-faint); scroll-snap-align:center; cursor:pointer; font-variant-numeric:tabular-nums;
+    white-space:nowrap;}
   .wheel-item.center{color:var(--text); font-weight:800; font-size:17px;}
 
   /* ── 온보딩 ── */
@@ -1682,12 +1678,12 @@
       var kind = col.getAttribute('data-kind') || 'time';
       var ref = kind==='duration' ? durationRefFor(ns) : kind==='reminder' ? reminderRefFor(ns) : timeRefFor(ns);
       if(!ref) return;
-      var idx = kind==='duration' ? durationIndexFor(role, ref.get()) : kind==='reminder' ? reminderIndexOf(ref.get()) : wheelIndexFor(role, parseHM(ref.get()));
+      var idx = kind==='duration' ? durationIndexFor(role, ref.get()) : kind==='reminder' ? reminderIndexFor(role, ref.get()) : wheelIndexFor(role, parseHM(ref.get()));
       col.scrollTop = idx*36;
       updateWheelCenter(col, idx);
       function settleThisWheel(){
         if(kind==='duration') settleDurationWheel(col, ns, role);
-        else if(kind==='reminder') settleReminderWheel(col, ns);
+        else if(kind==='reminder') settleReminderWheel(col, ns, role);
         else settleWheel(col, ns, role);
       }
       col.onscroll = function(){
@@ -1966,10 +1962,12 @@
     return html;
   }
 
-  // ── 시작 전 알림 (몇 분 전에 알려줄지) — 다른 시간 값들과 통일감 있게 롤링 휠로 골라요.
+  // ── 시작 전 알림 (몇 분 전에 알려줄지) — 소요 시간 휠과 같은 "시간 · 분" 두 칸 구조로
+  // 통일했어요. (예전엔 "1시간 30분 전" 같은 긴 라벨 한 칸짜리 휠이었는데, 좁은 휠 칸 폭에서
+  // 줄바꿈되면서 레이아웃이 깨졌어요 — 숫자만 담은 두 칸으로 바꿔서 해결했어요.)
   // 반복 일정은 이 값을 한 번 정해두면 매 회차마다 계속 쓰이고(일정 자체에 저장),
   // 일회성 일정은 추가할 때(빠른 추가·새 일정 폼) 그때그때 골라요.
-  var REMINDER_WHEEL_VALUES = [0,5,10,15,20,30,45,60,90,120];
+  var REMINDER_MAX_HOUR = 3;
   function reminderLabel(m){
     if(!m) return '알림 없음';
     return formatDurationHM(m)+' 전';
@@ -1979,18 +1977,24 @@
     if(ns==='quickAdd') return { get:function(){ return ui.quickAdd.reminderMinutes; }, set:function(v){ ui.quickAdd.reminderMinutes = v; } };
     return null;
   }
-  function reminderIndexOf(value){
-    var idx = REMINDER_WHEEL_VALUES.indexOf(value||0);
-    return idx===-1 ? 0 : idx;
+  function reminderIndexFor(role, value){
+    var v = Math.max(0, Math.min(REMINDER_MAX_HOUR*60, value||0));
+    var h = Math.floor(v/60), m = v%60;
+    if(role==='rhour') return Math.min(REMINDER_MAX_HOUR, h);
+    return Math.round(m/5) % 12;
   }
   function reminderPicker(value, ns){
-    var labels = REMINDER_WHEEL_VALUES.map(reminderLabel);
+    var v = Math.max(0, Math.min(REMINDER_MAX_HOUR*60, value||0));
+    var h = Math.floor(v/60), m = v%60;
+    var hourLabels = []; for(var i=0;i<=REMINDER_MAX_HOUR;i++) hourLabels.push(i+'시간');
+    var minLabels = []; for(var mm=0; mm<60; mm+=5) minLabels.push(pad2(mm)+'분');
     var html = '<div class="wheel-picker"><div class="wheel-highlight"></div>';
-    html += wheelColumn(ns, 'reminder', labels, reminderIndexOf(value), 'reminder');
+    html += wheelColumn(ns, 'rhour', hourLabels, Math.min(REMINDER_MAX_HOUR,h), 'reminder');
+    html += wheelColumn(ns, 'rminute', minLabels, Math.round(m/5)%12, 'reminder');
     html += '</div>';
     return html;
   }
-  function settleReminderWheel(col, ns){
+  function settleReminderWheel(col, ns, role){
     if((ns==='form' && !ui.form) || (ns==='quickAdd' && !ui.quickAdd)) return;
     var items = col.querySelectorAll('.wheel-item');
     if(!items.length) return;
@@ -1999,7 +2003,10 @@
     col.scrollTo({top: idx*36, behavior:'smooth'});
     updateWheelCenter(col, idx);
     var ref = reminderRefFor(ns); if(!ref) return;
-    ref.set(REMINDER_WHEEL_VALUES[idx]);
+    var cur = Math.max(0, Math.min(REMINDER_MAX_HOUR*60, ref.get()||0));
+    var h = Math.floor(cur/60), m = cur%60;
+    if(role==='rhour') h = idx; else if(role==='rminute') m = idx*5;
+    ref.set(h*60+m);
   }
 
   // ── 겹친 일정 해결 시트 (v40: 컨디션 조정과 완전히 분리) ──
@@ -2208,6 +2215,20 @@
   // 묻는 항목이라 빼고 컨디션 하나로 합쳤고, 컨디션도 안 좋음/좋음 둘 중 하나만 고르게 했어요.
   function renderCheckinModal(){
     var c = ui.checkin;
+    // 컨디션이 "안 좋음"이면 저장 직후 바로 같은 모달에서 "체크한 것 외엔 제외할까요?"라고
+    // 물어봐요 — 이전엔 저장 후 오늘 탭으로 돌아가서 제안 버튼을 따로 찾아 눌러야 해서
+    // 한 단계가 더 있었어요. "아니요"를 고르면 항목별로 직접 고르는 화면으로 바로 넘어가요.
+    if(c.view==='confirm'){
+      var saved = state.checkins[todayKey()];
+      var mustDoLabel = saved && saved.mustDoLabel;
+      var body2 = '<div class="sheet-sub" style="margin-bottom:16px;">' +
+        (mustDoLabel ? ('"'+esc(mustDoLabel)+'"만 남기고 ') : '') +
+        '오늘 남은 일정을 모두 제외해드릴까요?</div>';
+      body2 += btn('네, 제외해주세요', 'primary', "appAction('checkinConfirmExclude')");
+      body2 += btn('아니요, 제가 고를게요', 'secondary', "appAction('checkinConfirmManual')");
+      return '<div class="overlay" onclick="appAction(\'checkinClose\')"><div class="sheet" onclick="event.stopPropagation()">' +
+        '<div class="sheet-title">오늘 일정을 조정할까요?</div>'+body2+'</div></div>';
+    }
     var dateKey = todayKey();
     var candidateRows = buildTimetableForDate(dateKey).filter(function(r){ return !r.isFixed; });
     var availableMin = computeAvailableMinutesToday(dateKey);
@@ -2228,7 +2249,7 @@
       body += '</div>';
     }
     if(c.condition==='low'){
-      body += '<div class="section-sub" style="margin-top:6px;">컨디션이 안 좋다고 하시면, 위에서 고른 "꼭 해야 하는 일"만 남기고 오늘 나머지 일정은 모두 건너뛰자고 제안드릴게요. 마음에 안 들면 저장한 뒤 "다르게 조정하기"에서 직접 고르거나 AI에게 요청할 수 있어요.</div>';
+      body += '<div class="section-sub" style="margin-top:6px;">저장하면 바로, 위에서 고른 "꼭 해야 하는 일"만 남기고 나머지를 오늘 제외할지 물어볼게요.</div>';
     }
     body += '<div style="margin-top:16px;">'+btn('저장', 'primary', "appAction('checkinSave')")+btn('취소', 'ghost', "appAction('checkinClose')")+'</div>';
     return '<div class="overlay" onclick="appAction(\'checkinClose\')"><div class="sheet" onclick="event.stopPropagation()">' +
@@ -2451,14 +2472,11 @@
     body += '<div class="field-label">시작 시간</div>'+renderTimeWheel(d.time, 'form');
     body += '<div class="field-label">소요 시간</div>'+durationPicker(d.duration, 'formDuration');
 
-    body += '<button class="toggle-adv" onclick="appAction(\'formToggleAdvanced\')"><span class="t">세부 설정</span><span class="c">'+(f.advancedOpen?'접기 ▲':'펼치기 ▼')+'</span></button>';
-    if(f.advancedOpen){
-      body += '<div class="preset-row" style="margin-top:4px;">';
-      body += chip('오늘 꼭 해야 함', d.isFixed, "appAction('formToggle','isFixed')");
-      body += '</div>';
-      body += '<div class="field-label">메모 (선택)</div><input class="textfield" value="'+esc(d.memo)+'" placeholder="" oninput="appAction(\'formField\',\'memo\',this.value)"/>';
-      body += '<div class="field-label">시작 전 알림'+(f.kind==='session'?' (매 회차 공통)':'')+'</div>'+reminderPicker(d.reminderMinutes, 'form');
-    }
+    body += '<div class="section-title" style="margin:18px 0 4px;">세부 설정</div>';
+    body += '<div class="settings-row" style="padding:10px 0;"><div><div class="t">오늘 꼭 해야 함</div></div>' +
+      toggleTrack(d.isFixed, "appAction('formToggle','isFixed')") + '</div>';
+    body += '<div class="field-label">메모 (선택)</div><input class="textfield" value="'+esc(d.memo)+'" placeholder="" oninput="appAction(\'formField\',\'memo\',this.value)"/>';
+    body += '<div class="field-label">시작 전 알림'+(f.kind==='session'?' (매 회차 공통)':'')+'</div>'+reminderPicker(d.reminderMinutes, 'form');
 
     body += '<div style="margin-top:16px;">'+btn('저장', 'primary', "appAction('formSave')");
     if(f.editingId) body += btn('이 일정 삭제', 'danger', "appAction('formDelete')");
@@ -3046,7 +3064,21 @@
         }
         state.checkins[dkS] = { condition: ui.checkin.condition, mustDoId: ui.checkin.mustDoId,
           mustDoLabel: mustDoLabel, at: new Date().toISOString() };
-        ui.checkin = null; break;
+        if(ui.checkin.condition==='low') ui.checkin.view = 'confirm'; else ui.checkin = null;
+        break;
+      }
+      case 'checkinConfirmExclude': {
+        var sCheckin = computeFatigueSuggestion(todayKey(), now);
+        sCheckin.withMinVersion.forEach(applyMiniVersion);
+        sCheckin.withoutMinVersion.forEach(function(item){ setEntryStatus(item.kind, item.refId, todayKey(), 'excused', {reason:'too_tired'}); });
+        ui.checkin = null;
+        showInfoToast('체크한 항목 외에는 오늘 일정에서 제외했어요.');
+        break;
+      }
+      case 'checkinConfirmManual': {
+        ui.checkin = null;
+        ui.energy = {view:'manual', doneIds:[], aiText:'', aiLoading:false, aiError:null, aiPlan:null, aiItems:null};
+        break;
       }
 
       // ── 실패 패턴 인사이트 ──
@@ -3095,7 +3127,6 @@
         days.sort(function(a,b){return a-b;});
         ui.form.draft.days = days; break;
       }
-      case 'formToggleAdvanced': ui.form.advancedOpen = !ui.form.advancedOpen; break;
       case 'formDurationPreset': ui.form.draft.duration = args[0]; break;
       case 'formDurationCustom': break;
       case 'formDurationStep': ui.form.draft.duration = Math.max(5, ui.form.draft.duration+args[0]); break;
@@ -3339,7 +3370,7 @@
         reminderMinutes:en.reminderMinutes||0} :
         {label:'', time:'09:00', days:[], dateKey:curDateKey(), duration:30, isFixed:false, minVersion:'', memo:'', reminderMinutes:10};
     }
-    ui.form = { kind:kind, editingId:id||null, draft: draft, initial: Object.assign({}, draft), advancedOpen:false };
+    ui.form = { kind:kind, editingId:id||null, draft: draft, initial: Object.assign({}, draft) };
   }
 
   function findFatigueItem(refId){
