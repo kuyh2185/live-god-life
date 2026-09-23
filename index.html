@@ -3166,7 +3166,16 @@
         ui.onboardingStep = Math.min(2, ui.onboardingStep+1);
         break;
       }
-      case 'onboardingFinishWithDemo': seedDemoData(); ui.onboardingDone = true; ui.onboardingStep = 0; break;
+      case 'onboardingFinishWithDemo': {
+        seedDemoData();
+        ui.onboardingDone = true; ui.onboardingStep = 0;
+        // 설정 화면에서 다시 눌렀을 때는(이미 onboardingDone=true) 화면이 그대로라 아무 일도
+        // 안 일어난 것처럼 보였어요 — 오늘 탭으로 보내서 초기화된 예시 일정이 바로 보이게 해요.
+        ui.tab = 'today'; ui.settingsSection = null;
+        ui.briefingDismissed = false; ui.overlapDismissed = false;
+        showInfoToast('예시 일정으로 초기화했어요.');
+        break;
+      }
       case 'onboardingConnectCalendar': {
         // 실제 기기라면 여기서 Google 계정 연동(OAuth) 화면이 열려요. 프로토타입이라 실제
         // 연동은 안 되니, 연동됐다고 가정하고 자동 동기화를 켠 채로 빈 상태에서 시작해요
