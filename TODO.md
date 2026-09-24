@@ -1,5 +1,33 @@
 # 다음에 얘기할 수정 사항
 
+## 개발용 요약 (자세한 배경은 아래 1~12번)
+
+코드 위치는 전부 `index.html` 기준. "혼나기 모드" = 방해꾼(냥냥펀치) 기능.
+
+### A. 안드로이드 네이티브 연결 (한 묶음으로 진행 권장)
+- [ ] #8 알림 플러그인 설치: `@capacitor/local-notifications` 미설치 → `nativeNotifPlugin()`이 항상 null. 설치 후 `setupNativeNotifications()` 동작 확인, `state.settings.routine.wakeTimes/sleepTimes`로 기상·취침 알림 예약(현재 예약 코드 없음). 설정 화면에 "매일 몇 시에 무엇이 오는지" 예시 표시.
+- [ ] #1 방해꾼 켤 때 권한 2개(사용 기록 접근 `PACKAGE_USAGE_STATS`, 다른 앱 위에 표시 `SYSTEM_ALERT_WINDOW`): 앱 안 안내 창 2번 → 누르면 각 설정 화면으로 바로 이동. 시스템 팝업으로는 못 켬.
+- [ ] #6 실제 딴짓 감지: 현재 감지 코드 없음(`nyangSimulate` 버튼으로만 흉내). UsageStats로 앱별 사용 시간 확인하는 백그라운드 네이티브 코드 + `state.nyangRules` 조건 판정 + 오버레이.
+- [ ] #7 음성: `speakText()`가 `speechSynthesis` 사용 → WebView에서 대부분 무음 → 네이티브 TTS 플러그인. `voice.headphonesConnected`는 수동 스위치 → 실제 이어폰 감지로 교체.
+- [ ] #11 챗봇 마이크: 음성 인식 플러그인 + `RECORD_AUDIO`. 인식 결과를 기존 채팅 전송 흐름(`renderChatModal`의 입력창)에 넣고, 답변은 #7 TTS로 읽기. 순서: 받아쓰기 → 읽어주기 → 이어폰 핸즈프리.
+- [ ] #12 상태바 알림 "다음 일정까지 N분" 글자 멈춤: `syncOngoingNextUpNotification()`이 JS 1분 타이머로 갱신 → 백그라운드에서 멈춤. 본문에서 N분을 빼거나, 네이티브 플러그인 `OngoingScheduleNotification`(로컬 `android/`에만 있음, git 제외)이 시작 시각을 받아 직접 갱신.
+
+### B. 바로 고칠 수 있는 작은 수정 (index.html만)
+- [ ] #9 "오늘 다시 잡기"(시트 `replan` → `sheetSetView('adjustTime')`): 기본 시간을 `row.time` 대신 `findEmptySlot(dateKey, duration, entryId, nowMinutes)` 결과(없으면 지금 시각 5분 올림)로. 오늘이면 `timeStep`('sheet')이 지금보다 이전으로 못 내려가게.
+- [ ] #2 공유 버튼 문구: 히스토리 탭 "🔗 오늘 기록 공유하기" 버튼 + `renderShareModal()` 제목 → "오늘 활동 공유" 등 짧게(문구 확정 필요).
+- [ ] #3 미리보기 버튼 중복 정리: 같은 화면을 여는 미리보기 버튼은 하나로(어느 버튼인지 사용자에게 확인 필요, 후보: 규칙마다 있는 "▶ 딴짓해보기").
+
+### C. 설계부터 정해야 하는 것
+- [ ] #10 비서 성향 3단계(`state.settings.interventionLevel`): 지금 차이는 `renderToday()`의 `showActions`와 `hasAutoFatigueTrigger()`뿐이라 체감 없음. 단계별 알림 빈도·먼저 제안·방해꾼 권유·말풍선 빈도를 다르게 하고, 변경 시 "이렇게 달라져요" 미리보기. 강제 기능(화면 잠금) 없음 원칙 → 방해꾼 3단계 "진짜 잠금"(`NYANG_LEVELS[3]`) 빼거나 바꿀지 결정. "적극적으로"를 유료로 묶을지 결정.
+- [ ] #5 비서 말투 프리셋: 기본 = 정중한 존댓말. 후보: 반말 친구, 고양이 말투, 단호한 코치. 방해꾼 대사("~냥")도 프리셋 따라갈지.
+- [ ] #9-2 "조금 했어요" 피드백: `partialDegree`는 저장·히스토리 표시만 됨 → 다음 일정 제안(시간 줄이기·가볍게 버전 먼저)에 반영.
+- [ ] #4 고양이: 배경 지운 이미지(누끼)로 교체, 한 마리로 고정 → `BUDDY_KITTENS` 선택 UI(`renderNyang`의 "고양이 고르기") 제거. 어떤 고양이로 할지, 펀치 화면 배경을 어떻게 할지 결정.
+
+### D. 대기
+- [ ] Gemini 고양이 영상: 파일(`punch_이름.mp4`)을 받으면 냥냥펀치에 붙이기(치는 순간에 흔들림·소리 맞추고 치는 구간 반복).
+
+---
+
 ## 1. 혼나기 모드(방해꾼) 켤 때 권한 요청을 간단하게
 - 원하는 것: 혼나기 모드를 켜면 "알림을 허용하시겠습니까?" 창처럼 버튼만 누르면 되는 권한 창이 두 번 연달아 떴으면 좋겠음.
 - 필요한 권한 두 개(안드로이드 기준, 짐작):
